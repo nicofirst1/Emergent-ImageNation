@@ -71,7 +71,7 @@ class CaptionDataset(Dataset):
         return self.dataset_size
 
 
-def create_input_files( karpathy_json_path, image_folder, captions_per_image, min_word_freq, output_folder,
+def create_input_files( karpathy_json_path, image_folder, captions_per_image, min_word_freq, output_folder, data_name,
                        max_len=100, seed_val=8008):
     """
     Creates input files for training, validation, and test data.
@@ -135,11 +135,9 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
     word_map['<end>'] = len(word_map) + 1
     word_map['<pad>'] = 0
 
-    # Create a base/root name for all output files
-    base_filename = str(captions_per_image) + '_cap_per_img_' + str(min_word_freq) + '_min_word_freq'
 
     # Save word map to a JSON
-    with open(os.path.join(output_folder, 'WORDMAP_' + base_filename + '.json'), 'w') as j:
+    with open(os.path.join(output_folder, 'WORDMAP_' + data_name + '.json'), 'w') as j:
         json.dump(word_map, j)
 
     # Sample captions for each image, save images to HDF5 file, and captions and their lengths to JSON files
@@ -150,7 +148,7 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
 
     for impaths, imcaps, split in iterable:
 
-        h5_path = os.path.join(output_folder, split + '_IMAGES_' + base_filename + '.hdf5')
+        h5_path = os.path.join(output_folder, split + '_IMAGES_' + data_name + '.hdf5')
 
         # remove h5 if already present
         if os.path.isfile(h5_path):
@@ -207,10 +205,10 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
             assert images.shape[0] * captions_per_image == len(enc_captions) == len(caplens)
 
             # Save encoded captions and their lengths to JSON files
-            with open(os.path.join(output_folder, split + '_CAPTIONS_' + base_filename + '.json'), 'w') as j:
+            with open(os.path.join(output_folder, split + '_CAPTIONS_' + data_name + '.json'), 'w') as j:
                 json.dump(enc_captions, j)
 
-            with open(os.path.join(output_folder, split + '_CAPLENS_' + base_filename + '.json'), 'w') as j:
+            with open(os.path.join(output_folder, split + '_CAPLENS_' + data_name + '.json'), 'w') as j:
                 json.dump(caplens, j)
 
 
@@ -262,6 +260,9 @@ if __name__ == '__main__':
 
     # change base_path depending where you have coco
     base_path = "/home/dizzi/Desktop/coco/"
+    captions_per_image=5
+    min_word_freq=5
+    max_len=50
 
     # dependent paths
     ann_path = os.path.join(base_path, "annotations")
@@ -270,15 +271,29 @@ if __name__ == '__main__':
     karpathy_json_path = os.path.join(ann_path, "coco_raw.json")
     output_dir = os.path.join(base_path, "preprocessed")
 
+
+
+    data_name=f"{captions_per_image}_cap_per_img_{min_word_freq}_min_word_freq"
+
     if not os.path.isfile(karpathy_json_path):
         preprocess_coco_ann(train_caption_ann, val_caption_ann, karpathy_json_path)
 
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
-    create_input_files(karpathy_json_path=karpathy_json_path,
-                       image_folder=base_path,
-                       captions_per_image=5,
-                       min_word_freq=5,
-                       output_folder=output_dir,
-                       max_len=50)
+    if False:
+        create_input_files(karpathy_json_path=karpathy_json_path,
+                           image_folder=base_path,
+                           captions_per_image=captions_per_image,
+                           min_word_freq=min_word_freq,
+                           output_folder=output_dir,
+                           max_len=max_len,
+                           data_name=data_name)
+
+    train_data = CaptionDataset(output_dir, data_name, "TRAIN")
+    val_data = CaptionDataset(output_dir, data_name, "VAL")
+
+    t=train_data.__getitem__(3)
+    v=val_data.__getitem__(1)
+
+    a=1
