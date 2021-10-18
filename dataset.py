@@ -256,6 +256,8 @@ def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
     json.dump(out, open(output_file, 'w'))
 
 
+
+
 if __name__ == '__main__':
 
     # change base_path depending where you have coco
