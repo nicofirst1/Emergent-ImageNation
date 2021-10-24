@@ -1,68 +1,53 @@
 import os
 
-import wandb
+import torch
 from dalle_pytorch.tokenizer import tokenizer
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from arhcs.sender import dalle, DEPTH, HEADS, DIM_HEAD
+import wandb
+from Parameters import  SenderTrainParams
+from arhcs.sender import get_sender, get_dalle_params
 from dataset import CaptionDataset
 
-IMAGE_SIZE = 128
-IMAGE_PATH = './'
 
-EPOCHS = 20
-BATCH_SIZE = 8
-LEARNING_RATE = 1e-3
-LR_DECAY_RATE = 0.98
-GRAD_CLIP_NORM = 0.5
-
-STARTING_TEMP = 1.
-TEMP_MIN = 0.5
-ANNEAL_RATE = 1e-6
-
-NUM_IMAGES_SAVE = 4
-RESUME=False
+params= SenderTrainParams()
+model_config=get_dalle_params()
 weights=None
 
 
 base_path = "/home/dizzi/Desktop/coco/"
 output_dir = os.path.join(base_path, "preprocessed")
 
-train_data = CaptionDataset(output_dir, "", "TRAIN")
+train_data = CaptionDataset(output_dir, "TRAIN")
 
-dl = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
+dl = DataLoader(train_data, batch_size=params.BATCH_SIZE, shuffle=True, drop_last=True)
 
+dalle = get_sender(cuda=params.cuda)
 
-if RESUME:
+if weights is not None:
     dalle.load_state_dict(weights)
 
 # optimizer
 
-opt = Adam(dalle.parameters(), lr=LEARNING_RATE)
+opt = Adam(dalle.parameters(), lr=params.LEARNING_RATE)
 
 # experiment tracker
 
-
-model_config = dict(
-    depth=DEPTH,
-    heads=HEADS,
-    dim_head=DIM_HEAD
-)
-
-run = wandb.init(project='dalle_train_transformer', resume=RESUME, config=model_config)
-
+run = wandb.init(project='dalle_train_transformer', config=model_config)
 # training
 
-for epoch in range(EPOCHS):
-    for i, (text, images, mask) in enumerate(dl):
-        text, images, mask = map(lambda t: t.cuda(), (text, images, mask))
+for epoch in range(params.EPOCHS):
+    for i, (images, text, mask) in enumerate(dl):
+
+        if params.cuda:
+            text, images, mask = map(lambda t: t.cuda(), (text, images, mask))
 
         loss = dalle(text, images, mask=mask, return_loss=True)
 
         loss.backward()
-        clip_grad_norm_(dalle.parameters(), GRAD_CLIP_NORM)
+        clip_grad_norm_(dalle.parameters(), params.GRAD_CLIP_NORM)
 
         opt.step()
         opt.zero_grad()
@@ -90,7 +75,7 @@ for epoch in range(EPOCHS):
                 filter_thres=0.9  # topk sampling at 0.9
             )
 
-            save_model(f'./dalle.pt')
+            torch.save(dalle.state_dict(), f'./dalle.pt')
             wandb.save(f'./dalle.pt')
 
             log = {
@@ -104,12 +89,10 @@ for epoch in range(EPOCHS):
 
     model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(model_config))
     model_artifact.add_file('dalle.pt')
-    run.log_artifact(model_artifact)
 
-save_model(f'./dalle-final.pt')
+torch.save(dalle.state_dict(), f'./dalle-final.pt')
 wandb.save('./dalle-final.pt')
 model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(model_config))
 model_artifact.add_file('dalle-final.pt')
-run.log_artifact(model_artifact)
 
 wandb.finish()

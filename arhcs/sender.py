@@ -1,27 +1,31 @@
-import torch
 from dalle_pytorch import DALLE, VQGanVAE
 
-MODEL_DIM = 512
-TEXT_SEQ_LEN = 256
-DEPTH = 2
-HEADS = 4
-DIM_HEAD = 64
-REVERSIBLE = True
-
-VOCAB_SIZE=999
-
-dalle_params = dict(
-    num_text_tokens=VOCAB_SIZE,
-    text_seq_len=TEXT_SEQ_LEN,
-    dim=MODEL_DIM,
-    depth=DEPTH,
-    heads=HEADS,
-    dim_head=DIM_HEAD,
-    reversible=REVERSIBLE
-)
-
-vae = VQGanVAE()  # loads pretrained taming Transformer
-
-dalle = DALLE(vae=vae, **dalle_params).cuda()
+from Parameters import Parameters
 
 
+def get_dalle_params():
+    params = Parameters()
+
+    return dict(
+        num_text_tokens=params.vocab_size,
+        text_seq_len=params.TEXT_SEQ_LEN,
+        dim=params.MODEL_DIM,
+        depth=params.DEPTH,
+        heads=params.HEADS,
+        dim_head=params.DIM_HEAD,
+        reversible=params.REVERSIBLE
+    )
+
+
+def get_sender(dalle_params=None, cuda=False):
+    if dalle_params is None:
+        dalle_params = get_dalle_params()
+
+    vae = VQGanVAE()  # loads pretrained taming Transformer
+
+    dalle = DALLE(vae=vae, **dalle_params)
+
+    if cuda:
+        dalle = dalle.cuda()
+
+    return dalle

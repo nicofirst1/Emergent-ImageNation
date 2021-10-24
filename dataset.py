@@ -12,16 +12,17 @@ from imageio import imread
 from rich.progress import track
 from torch.utils.data import Dataset
 
+from Parameters import Parameters
+
 
 class CaptionDataset(Dataset):
     """
     A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
     """
 
-    def __init__(self, data_folder, data_name, split, transform=None):
+    def __init__(self, data_folder, split, transform=None):
         """
         :param data_folder: folder where data files are stored
-        :param data_name: base name of processed datasets
         :param split: split, one of 'TRAIN', 'VAL', or 'TEST'
         :param transform: image transform pipeline
         """
@@ -29,18 +30,26 @@ class CaptionDataset(Dataset):
         assert self.split in {'TRAIN', 'VAL', 'TEST'}
 
         # Open hdf5 file where images are stored
-        self.h = h5py.File(os.path.join(data_folder, self.split + '_IMAGES_' + data_name + '.hdf5'), 'r')
+        files = [f for f in os.listdir(data_folder) if os.path.isfile(os.path.join(data_folder, f))]
+        files = [elem for elem in files if self.split in elem]
+        assert len(files) == 3, f"Found {len(files)} files in {data_folder}, need 3 (IMAGES, CAPTIONS, CAPLEN)."
+
+        hdf5 = [elem for elem in files if "IMAGES" in elem][0]
+        captions = [elem for elem in files if "CAPTIONS" in elem][0]
+        caplens = [elem for elem in files if "CAPLENS" in elem][0]
+
+        self.h = h5py.File(os.path.join(data_folder, hdf5), 'r')
         self.imgs = self.h['images']
 
         # Captions per image
         self.cpi = self.h.attrs['captions_per_image']
 
         # Load encoded captions (completely into memory)
-        with open(os.path.join(data_folder, self.split + '_CAPTIONS_' + data_name + '.json'), 'r') as j:
+        with open(os.path.join(data_folder, captions), 'r') as j:
             self.captions = json.load(j)
 
         # Load caption lengths (completely into memory)
-        with open(os.path.join(data_folder, self.split + '_CAPLENS_' + data_name + '.json'), 'r') as j:
+        with open(os.path.join(data_folder, caplens), 'r') as j:
             self.caplens = json.load(j)
 
         # PyTorch transformation pipeline for the image (normalizing, etc.)
@@ -71,8 +80,8 @@ class CaptionDataset(Dataset):
         return self.dataset_size
 
 
-def create_input_files( karpathy_json_path, image_folder, captions_per_image, min_word_freq, output_folder, data_name,
-                       max_len=100, seed_val=8008):
+def create_input_files(karpathy_json_path, image_folder, captions_per_image, min_word_freq, output_folder, data_name,
+                       max_len=256, seed_val=8008, max_vocab_size=11000):
     """
     Creates input files for training, validation, and test data.
     :param karpathy_json_path: path of Karpathy JSON file with splits and captions
@@ -82,7 +91,6 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
     :param output_folder: folder to save files
     :param max_len: don't sample captions longer than this length
     """
-
 
     # Read Karpathy JSON
     with open(karpathy_json_path, 'r') as j:
@@ -96,7 +104,6 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
     test_image_paths = []
     test_image_captions = []
     word_freq = Counter()
-
 
     for img in track(data, total=len(data), description="Processing tokens..."):
         captions = []
@@ -128,13 +135,16 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
     assert len(test_image_paths) == len(test_image_captions)
 
     # Create word map
-    words = [w for w in word_freq.keys() if word_freq[w] > min_word_freq]
+
+    word_freq = Counter({k: v for k, v in word_freq.items() if v > min_word_freq})
+
+    words = word_freq.most_common(max_vocab_size)
+    words= [elem[0] for elem in words]
     word_map = {k: v + 1 for v, k in enumerate(words)}
     word_map['<unk>'] = len(word_map) + 1
     word_map['<start>'] = len(word_map) + 1
     word_map['<end>'] = len(word_map) + 1
     word_map['<pad>'] = 0
-
 
     # Save word map to a JSON
     with open(os.path.join(output_folder, 'WORDMAP_' + data_name + '.json'), 'w') as j:
@@ -142,9 +152,9 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
 
     # Sample captions for each image, save images to HDF5 file, and captions and their lengths to JSON files
     seed(seed_val)
-    iterable= [(train_image_paths, train_image_captions, 'TRAIN'),
-               (val_image_paths, val_image_captions, 'VAL'),
-               (test_image_paths, test_image_captions, 'TEST')]
+    iterable = [(train_image_paths, train_image_captions, 'TRAIN'),
+                (val_image_paths, val_image_captions, 'VAL'),
+                (test_image_paths, test_image_captions, 'TEST')]
 
     for impaths, imcaps, split in iterable:
 
@@ -193,7 +203,7 @@ def create_input_files( karpathy_json_path, image_folder, captions_per_image, mi
                 for j, c in enumerate(captions):
                     # Encode captions
                     enc_c = [word_map['<start>']] + [word_map.get(word, word_map['<unk>']) for word in c] + [
-                        word_map['<end>']] + [word_map['<pad>']] * (max_len - len(c))
+                        word_map['<end>']] + [word_map['<pad>']] * (max_len - len(c) - 2)
 
                     # Find caption lengths
                     c_len = len(c) + 2
@@ -256,15 +266,12 @@ def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
     json.dump(out, open(output_file, 'w'))
 
 
-
-
 if __name__ == '__main__':
 
     # change base_path depending where you have coco
     base_path = "/home/dizzi/Desktop/coco/"
-    captions_per_image=5
-    min_word_freq=5
-    max_len=50
+
+    params = Parameters()
 
     # dependent paths
     ann_path = os.path.join(base_path, "annotations")
@@ -273,9 +280,7 @@ if __name__ == '__main__':
     karpathy_json_path = os.path.join(ann_path, "coco_raw.json")
     output_dir = os.path.join(base_path, "preprocessed")
 
-
-
-    data_name=f"{captions_per_image}_cap_per_img_{min_word_freq}_min_word_freq"
+    data_name = f"{params.captions_per_image}_cap_per_img_{params.min_word_freq}_min_word_freq"
 
     if not os.path.isfile(karpathy_json_path):
         preprocess_coco_ann(train_caption_ann, val_caption_ann, karpathy_json_path)
@@ -283,19 +288,18 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
-    if False:
+    if True:
         create_input_files(karpathy_json_path=karpathy_json_path,
                            image_folder=base_path,
-                           captions_per_image=captions_per_image,
-                           min_word_freq=min_word_freq,
+                           captions_per_image=params.captions_per_image,
+                           min_word_freq=params.min_word_freq,
                            output_folder=output_dir,
-                           max_len=max_len,
-                           data_name=data_name)
+                           max_len=params.max_len,
+                           data_name=data_name,
+                           max_vocab_size=params.vocab_size)
 
-    train_data = CaptionDataset(output_dir, data_name, "TRAIN")
-    val_data = CaptionDataset(output_dir, data_name, "VAL")
+    train_data = CaptionDataset(output_dir, "TRAIN")
+    val_data = CaptionDataset(output_dir, "VAL")
 
-    t=train_data.__getitem__(3)
-    v=val_data.__getitem__(1)
-
-    a=1
+    t = train_data.__getitem__(3)
+    v = val_data.__getitem__(1)
