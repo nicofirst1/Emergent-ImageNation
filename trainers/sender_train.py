@@ -1,62 +1,65 @@
 import os
 
 import torch
+import wandb
 from dalle_pytorch.tokenizer import tokenizer
+from rich.progress import track
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-import wandb
-from Parameters import  SenderTrainParams
+from Parameters import SenderTrainParams, PathParams
 from arhcs.sender import get_sender, get_dalle_params
 from dataset import CaptionDataset
 
+st_params = SenderTrainParams()
+data_params=PathParams()
 
-params= SenderTrainParams()
-model_config=get_dalle_params()
-weights=None
+model_config = get_dalle_params()
+weights = "./dalle.pt"
 
 
-base_path = "/home/dizzi/Desktop/coco/"
-output_dir = os.path.join(base_path, "preprocessed")
+train_data = CaptionDataset(data_params.preprocessed_dir, "TRAIN")
 
-train_data = CaptionDataset(output_dir, "TRAIN")
+dl = DataLoader(train_data, batch_size=st_params.BATCH_SIZE, shuffle=True, drop_last=True)
 
-dl = DataLoader(train_data, batch_size=params.BATCH_SIZE, shuffle=True, drop_last=True)
-
-dalle = get_sender(cuda=params.cuda)
+dalle = get_sender(cuda=st_params.cuda)
 
 if weights is not None:
+    weights=torch.load(weights)
     dalle.load_state_dict(weights)
+    print("Dalle weights loaded!")
 
 # optimizer
 
-opt = Adam(dalle.parameters(), lr=params.LEARNING_RATE)
+opt = Adam(dalle.parameters(), lr=st_params.LEARNING_RATE)
 
 # experiment tracker
 
-run = wandb.init(project='dalle_train_transformer', config=model_config)
+wandb_dir = "./wandb_metadata"
+if not os.path.isdir(wandb_dir):
+    os.mkdir(wandb_dir)
+
+if not st_params.debug: run = wandb.init(project='dalle_train_transformer', config=model_config, dir=wandb_dir)
 # training
 
-for epoch in range(params.EPOCHS):
-    for i, (images, text, mask) in enumerate(dl):
+for epoch in range(st_params.EPOCHS):
+    for i, (images, text, mask) in track(enumerate(dl), total=len(dl), description="Batches..."):
 
-        if params.cuda:
+        if st_params.cuda:
             text, images, mask = map(lambda t: t.cuda(), (text, images, mask))
 
         loss = dalle(text, images, mask=mask, return_loss=True)
 
         loss.backward()
-        clip_grad_norm_(dalle.parameters(), params.GRAD_CLIP_NORM)
+        clip_grad_norm_(dalle.parameters(), st_params.GRAD_CLIP_NORM)
 
         opt.step()
         opt.zero_grad()
 
         log = {}
 
-        if i % 10 == 0:
-            print(epoch, i, f'loss - {loss.item()}')
-
+        if i % 100 == 0:
             log = {
                 **log,
                 'epoch': epoch,
@@ -64,7 +67,7 @@ for epoch in range(params.EPOCHS):
                 'loss': loss.item()
             }
 
-        if i % 100 == 0:
+        if i % 1000 == 0:
             sample_text = text[:1]
             token_list = sample_text.masked_select(sample_text != 0).tolist()
             decoded_text = tokenizer.decode(token_list)
@@ -74,16 +77,16 @@ for epoch in range(params.EPOCHS):
                 mask=mask[:1],
                 filter_thres=0.9  # topk sampling at 0.9
             )
-
+            image = image[0]
             torch.save(dalle.state_dict(), f'./dalle.pt')
-            wandb.save(f'./dalle.pt')
+            if not st_params.debug: wandb.save(f'./dalle.pt')
 
             log = {
                 **log,
                 'image': wandb.Image(image, caption=decoded_text)
             }
 
-        wandb.log(log)
+        if not st_params.debug: wandb.log(log)
 
     # save trained model to wandb as an artifact every epoch's end
 
@@ -91,8 +94,8 @@ for epoch in range(params.EPOCHS):
     model_artifact.add_file('dalle.pt')
 
 torch.save(dalle.state_dict(), f'./dalle-final.pt')
-wandb.save('./dalle-final.pt')
+if not st_params.debug: wandb.save('./dalle-final.pt')
 model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(model_config))
 model_artifact.add_file('dalle-final.pt')
 
-wandb.finish()
+if not st_params.debug: wandb.finish()

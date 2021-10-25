@@ -1,18 +1,19 @@
 import json
 import os
-from collections import Counter
+import pickle
+import random
 from random import seed, choice, sample
 
 import cv2
 import h5py
-import nltk
 import numpy as np
 import torch
+from dalle_pytorch.tokenizer import SimpleTokenizer
 from imageio import imread
 from rich.progress import track
 from torch.utils.data import Dataset
 
-from Parameters import Parameters
+from Parameters import DataParams
 
 
 class CaptionDataset(Dataset):
@@ -20,7 +21,7 @@ class CaptionDataset(Dataset):
     A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
     """
 
-    def __init__(self, data_folder, split, transform=None):
+    def __init__(self, data_folder, split, transform=None, seed=42):
         """
         :param data_folder: folder where data files are stored
         :param split: split, one of 'TRAIN', 'VAL', or 'TEST'
@@ -45,12 +46,12 @@ class CaptionDataset(Dataset):
         self.cpi = self.h.attrs['captions_per_image']
 
         # Load encoded captions (completely into memory)
-        with open(os.path.join(data_folder, captions), 'r') as j:
-            self.captions = json.load(j)
+        with open(os.path.join(data_folder, captions), 'rb') as file:
+            self.captions = pickle.load(file)
 
         # Load caption lengths (completely into memory)
-        with open(os.path.join(data_folder, caplens), 'r') as j:
-            self.caplens = json.load(j)
+        with open(os.path.join(data_folder, caplens), 'r') as file:
+            self.caplens = json.load(file)
 
         # PyTorch transformation pipeline for the image (normalizing, etc.)
         self.transform = transform
@@ -58,22 +59,32 @@ class CaptionDataset(Dataset):
         # Total number of datapoints
         self.dataset_size = len(self.captions)
 
+        random.seed(seed)
+
     def __getitem__(self, i):
-        # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
-        img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
+        img = torch.FloatTensor(self.imgs[i] / 255.)
         if self.transform is not None:
             img = self.transform(img)
 
-        caption = torch.LongTensor(self.captions[i])
+        cap_index = random.randint(0, len(self.captions[i]) - 1)
+        caption = torch.LongTensor(self.captions[i][cap_index])
+        caplen = torch.zeros(caption.size())
+        caplen[:self.caplens[i][cap_index]] = 1
 
-        caplen = torch.LongTensor([self.caplens[i]])
+        if False:  # set to true if you want to debug the image/caption pair
+            from torchvision.transforms import ToPILImage
+
+            # show the image
+            ToPILImage()(img).show()
+            decoded = SimpleTokenizer().decode(caption)
+            print(decoded)
 
         if self.split == 'TRAIN':
             return img, caption, caplen
         else:
             # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
             all_captions = torch.LongTensor(
-                self.captions[((i // self.cpi) * self.cpi):(((i // self.cpi) * self.cpi) + self.cpi)])
+                self.captions[i])
             return img, caption, caplen, all_captions
 
     def __len__(self):
@@ -93,8 +104,8 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
     """
 
     # Read Karpathy JSON
-    with open(karpathy_json_path, 'r') as j:
-        data = json.load(j)
+    with open(karpathy_json_path, 'r') as file:
+        data = json.load(file)
 
     # Read image paths and captions for each image
     train_image_paths = []
@@ -103,16 +114,14 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
     val_image_captions = []
     test_image_paths = []
     test_image_captions = []
-    word_freq = Counter()
+    tokenizer = SimpleTokenizer()
 
     for img in track(data, total=len(data), description="Processing tokens..."):
+
         captions = []
         for c in img['captions']:
             # Update word frequency
-            tokens = nltk.word_tokenize(c)
-            word_freq.update(tokens)
-            if len(tokens) <= max_len:
-                captions.append(tokens)
+            captions.append(c)
 
         if len(captions) == 0:
             continue
@@ -135,20 +144,6 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
     assert len(test_image_paths) == len(test_image_captions)
 
     # Create word map
-
-    word_freq = Counter({k: v for k, v in word_freq.items() if v > min_word_freq})
-
-    words = word_freq.most_common(max_vocab_size)
-    words= [elem[0] for elem in words]
-    word_map = {k: v + 1 for v, k in enumerate(words)}
-    word_map['<unk>'] = len(word_map) + 1
-    word_map['<start>'] = len(word_map) + 1
-    word_map['<end>'] = len(word_map) + 1
-    word_map['<pad>'] = 0
-
-    # Save word map to a JSON
-    with open(os.path.join(output_folder, 'WORDMAP_' + data_name + '.json'), 'w') as j:
-        json.dump(word_map, j)
 
     # Sample captions for each image, save images to HDF5 file, and captions and their lengths to JSON files
     seed(seed_val)
@@ -200,26 +195,24 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
                 # Save image to HDF5 file
                 images[i] = img
 
-                for j, c in enumerate(captions):
-                    # Encode captions
-                    enc_c = [word_map['<start>']] + [word_map.get(word, word_map['<unk>']) for word in c] + [
-                        word_map['<end>']] + [word_map['<pad>']] * (max_len - len(c) - 2)
-
-                    # Find caption lengths
-                    c_len = len(c) + 2
-
-                    enc_captions.append(enc_c)
-                    caplens.append(c_len)
+                #  encode every caption
+                captions = ['<|startoftext|> ' + cap + ' <|endoftext|>' for cap in captions]
+                caplens.append([len(cap) for cap in captions])
+                enc_captions.append(tokenizer.tokenize(captions, context_length=max_len))
 
             # Sanity check
-            assert images.shape[0] * captions_per_image == len(enc_captions) == len(caplens)
+            print(f"{images.shape[0]}  == {len(enc_captions)} == {len(caplens)}")
+            assert images.shape[0] == len(enc_captions) == len(caplens)
+
+            enc_path = os.path.join(output_folder, split + '_CAPTIONS_' + data_name + '.pkl')
+            caplens_path = os.path.join(output_folder, split + '_CAPLENS_' + data_name + '.json')
 
             # Save encoded captions and their lengths to JSON files
-            with open(os.path.join(output_folder, split + '_CAPTIONS_' + data_name + '.json'), 'w') as j:
-                json.dump(enc_captions, j)
+            with open(enc_path, 'wb') as file:
+                pickle.dump(enc_captions, file)
 
-            with open(os.path.join(output_folder, split + '_CAPLENS_' + data_name + '.json'), 'w') as j:
-                json.dump(caplens, j)
+            with open(caplens_path, 'w') as file:
+                json.dump(caplens, file)
 
 
 def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
@@ -271,7 +264,7 @@ if __name__ == '__main__':
     # change base_path depending where you have coco
     base_path = "/home/dizzi/Desktop/coco/"
 
-    params = Parameters()
+    params = DataParams()
 
     # dependent paths
     ann_path = os.path.join(base_path, "annotations")
@@ -288,13 +281,13 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
-    if True:
+    if False:
         create_input_files(karpathy_json_path=karpathy_json_path,
                            image_folder=base_path,
                            captions_per_image=params.captions_per_image,
                            min_word_freq=params.min_word_freq,
                            output_folder=output_dir,
-                           max_len=params.max_len,
+                           max_len=params.TEXT_SEQ_LEN,
                            data_name=data_name,
                            max_vocab_size=params.vocab_size)
 

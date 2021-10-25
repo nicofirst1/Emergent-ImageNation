@@ -1,13 +1,14 @@
 from dalle_pytorch import DALLE, VQGanVAE
 
-from Parameters import Parameters
+from Parameters import DataParams, SenderTrainParams
 
 
 def get_dalle_params():
-    params = Parameters()
+    params = SenderTrainParams()
+    dt= DataParams()
 
     return dict(
-        num_text_tokens=params.vocab_size,
+        num_text_tokens=dt.vocab_size,
         text_seq_len=params.TEXT_SEQ_LEN,
         dim=params.MODEL_DIM,
         depth=params.DEPTH,
@@ -17,7 +18,7 @@ def get_dalle_params():
     )
 
 
-def get_sender(dalle_params=None, cuda=False):
+def get_sender(dalle_params=None, cuda=False) -> DALLE:
     if dalle_params is None:
         dalle_params = get_dalle_params()
 
