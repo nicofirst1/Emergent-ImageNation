@@ -5,7 +5,7 @@ from torch.backends import cudnn
 
 
 class ReceiverTrainParams:
-    debug = True
+    debug = False
     data_name = "receiver"
 
     # Model parameters
@@ -21,7 +21,7 @@ class ReceiverTrainParams:
     start_epoch = 0
     epochs = 120  # number of epochs to train for (if early stopping is not triggered)
     batch_size = 32 if not debug else 2
-    workers = 1  # for data-loading; right now, only 1 works with h5py
+    workers = 1 if not debug else 0  # for data-loading; right now, only 1 works with h5py
     encoder_lr = 1e-4  # learning rate for encoder if fine-tuning
     decoder_lr = 4e-4  # learning rate for decoder
     grad_clip = 5.  # clip gradients at an absolute value of
@@ -35,27 +35,26 @@ class SenderTrainParams:
     debug = False
 
     ### TRAINING
-    EPOCHS = 20
-    BATCH_SIZE = 4
+    epochs = 20
+    batch_size = 4
     cuda = True
 
     ### DALLe training params
 
-    LEARNING_RATE = 1e-3
-    LR_DECAY_RATE = 0.98
-    GRAD_CLIP_NORM = 0.5
+    lr = 1e-3
+    lr_decay = 0.98
+    grad_clip_norm = 0.5
 
-    STARTING_TEMP = 1.
-    TEMP_MIN = 0.5
-    ANNEAL_RATE = 1e-6
+    starting_temp = 1.
+    temp_min = 0.5
+    anneal_rate = 1e-6
 
     ### DALLE model params
-    MODEL_DIM = 128
-    TEXT_SEQ_LEN = 256
-    DEPTH = 2
-    HEADS = 4
-    DIM_HEAD = 64
-    REVERSIBLE = True
+    model_dim = 128
+    depth = 2
+    heads = 4
+    dim_head = 64
+    reversible = True
 
 
 class PathParams:
@@ -63,9 +62,12 @@ class PathParams:
 
     preprocessed_dir = os.path.join(base_path, "preprocessed")
 
+    wandb_dir = "./wandb_metadata"
+
 
 class DataParams:
     ### DATA CREATION
     vocab_size = 49408  # used also in dalle setupp
     captions_per_image = 5  # number of captions to keep per image
     min_word_freq = 5
+    max_text_seq_len = 256

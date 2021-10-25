@@ -9,12 +9,12 @@ def get_dalle_params():
 
     return dict(
         num_text_tokens=dt.vocab_size,
-        text_seq_len=params.TEXT_SEQ_LEN,
-        dim=params.MODEL_DIM,
-        depth=params.DEPTH,
-        heads=params.HEADS,
-        dim_head=params.DIM_HEAD,
-        reversible=params.REVERSIBLE
+        text_seq_len=dt.max_text_seq_len,
+        dim=params.model_dim,
+        depth=params.depth,
+        heads=params.heads,
+        dim_head=params.dim_head,
+        reversible=params.reversible
     )
 
 

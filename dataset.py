@@ -50,8 +50,8 @@ class CaptionDataset(Dataset):
             self.captions = pickle.load(file)
 
         # Load caption lengths (completely into memory)
-        with open(os.path.join(data_folder, caplens), 'r') as file:
-            self.caplens = json.load(file)
+        with open(os.path.join(data_folder, caplens), 'rb') as file:
+            self.caplens = pickle.load(file)
 
         # PyTorch transformation pipeline for the image (normalizing, etc.)
         self.transform = transform
@@ -68,8 +68,7 @@ class CaptionDataset(Dataset):
 
         cap_index = random.randint(0, len(self.captions[i]) - 1)
         caption = torch.LongTensor(self.captions[i][cap_index])
-        caplen = torch.zeros(caption.size())
-        caplen[:self.caplens[i][cap_index]] = 1
+        caplen = torch.LongTensor([self.caplens[i][cap_index]])
 
         if False:  # set to true if you want to debug the image/caption pair
             from torchvision.transforms import ToPILImage
@@ -197,22 +196,23 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
 
                 #  encode every caption
                 captions = ['<|startoftext|> ' + cap + ' <|endoftext|>' for cap in captions]
-                caplens.append([len(cap) for cap in captions])
-                enc_captions.append(tokenizer.tokenize(captions, context_length=max_len))
+                ec= tokenizer.tokenize(captions, context_length=max_len)
+                enc_captions.append(ec)
+                caplens.append([torch.count_nonzero(cap) for cap in ec])
 
             # Sanity check
             print(f"{images.shape[0]}  == {len(enc_captions)} == {len(caplens)}")
             assert images.shape[0] == len(enc_captions) == len(caplens)
 
             enc_path = os.path.join(output_folder, split + '_CAPTIONS_' + data_name + '.pkl')
-            caplens_path = os.path.join(output_folder, split + '_CAPLENS_' + data_name + '.json')
+            caplens_path = os.path.join(output_folder, split + '_CAPLENS_' + data_name + '.pkl')
 
             # Save encoded captions and their lengths to JSON files
             with open(enc_path, 'wb') as file:
                 pickle.dump(enc_captions, file)
 
-            with open(caplens_path, 'w') as file:
-                json.dump(caplens, file)
+            with open(caplens_path, 'wb') as file:
+                pickle.dump(caplens, file)
 
 
 def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
@@ -281,13 +281,13 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
-    if False:
+    if True:
         create_input_files(karpathy_json_path=karpathy_json_path,
                            image_folder=base_path,
                            captions_per_image=params.captions_per_image,
                            min_word_freq=params.min_word_freq,
                            output_folder=output_dir,
-                           max_len=params.TEXT_SEQ_LEN,
+                           max_len=params.max_text_seq_len,
                            data_name=data_name,
                            max_vocab_size=params.vocab_size)
 

@@ -13,15 +13,15 @@ from arhcs.sender import get_sender, get_dalle_params
 from dataset import CaptionDataset
 
 st_params = SenderTrainParams()
-data_params=PathParams()
+pt_params=PathParams()
 
 model_config = get_dalle_params()
 weights = "./dalle.pt"
 
 
-train_data = CaptionDataset(data_params.preprocessed_dir, "TRAIN")
+train_data = CaptionDataset(pt_params.preprocessed_dir, "TRAIN")
 
-dl = DataLoader(train_data, batch_size=st_params.BATCH_SIZE, shuffle=True, drop_last=True)
+dl = DataLoader(train_data, batch_size=st_params.batch_size, shuffle=True, drop_last=True)
 
 dalle = get_sender(cuda=st_params.cuda)
 
@@ -32,18 +32,17 @@ if weights is not None:
 
 # optimizer
 
-opt = Adam(dalle.parameters(), lr=st_params.LEARNING_RATE)
+opt = Adam(dalle.parameters(), lr=st_params.lr)
 
 # experiment tracker
 
-wandb_dir = "./wandb_metadata"
-if not os.path.isdir(wandb_dir):
-    os.mkdir(wandb_dir)
+if not os.path.isdir(pt_params.wandb_dir):
+    os.mkdir(pt_params.wandb_dir)
 
-if not st_params.debug: run = wandb.init(project='dalle_train_transformer', config=model_config, dir=wandb_dir)
+if not st_params.debug: run = wandb.init(project='dalle_train_transformer', config=model_config, dir=pt_params.wandb_dir)
 # training
 
-for epoch in range(st_params.EPOCHS):
+for epoch in range(st_params.epochs):
     for i, (images, text, mask) in track(enumerate(dl), total=len(dl), description="Batches..."):
 
         if st_params.cuda:
@@ -52,7 +51,7 @@ for epoch in range(st_params.EPOCHS):
         loss = dalle(text, images, mask=mask, return_loss=True)
 
         loss.backward()
-        clip_grad_norm_(dalle.parameters(), st_params.GRAD_CLIP_NORM)
+        clip_grad_norm_(dalle.parameters(), st_params.grad_clip_norm)
 
         opt.step()
         opt.zero_grad()
