@@ -14,7 +14,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.enc_image_size = encoded_image_size
 
-        resnet = torchvision.models.resnet101(pretrained=True)  # pretrained ImageNet ResNet-101
+        resnet = torchvision.models.resnet18(pretrained=True)  # pretrained ImageNet ResNet-101
 
         # Remove linear and pool layers (since we're not doing classification)
         modules = list(resnet.children())[:-2]
@@ -90,7 +90,7 @@ class DecoderWithAttention(nn.Module):
     Decoder.
     """
 
-    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, encoder_dim=2048, dropout=0.5):
+    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, encoder_dim=512, dropout=0.5):
         """
         :param attention_dim: size of attention network
         :param embed_dim: embedding size
@@ -207,3 +207,19 @@ class DecoderWithAttention(nn.Module):
             alphas[:batch_size_t, t, :] = alpha
 
         return predictions, encoded_captions, decode_lengths, alphas, sort_ind
+
+
+
+def get_recevier(rt_params, data_params):
+    decoder = DecoderWithAttention(attention_dim=rt_params.attention_dim,
+                                   embed_dim=rt_params.emb_dim,
+                                   decoder_dim=rt_params.decoder_dim,
+                                   vocab_size=data_params.vocab_size,
+                                   dropout=rt_params.dropout)
+    encoder = Encoder()
+    encoder.fine_tune(rt_params.fine_tune_encoder)
+
+    decoder = decoder.to(rt_params.device)
+    encoder = encoder.to(rt_params.device)
+
+    return decoder, encoder

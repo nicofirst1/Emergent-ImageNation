@@ -216,3 +216,5 @@ trainers/taming/
 .idea/
 
 trainers/wandb_metadata/
+
+*.tar

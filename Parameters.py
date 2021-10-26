@@ -5,13 +5,13 @@ from torch.backends import cudnn
 
 
 class ReceiverTrainParams:
-    debug = False
+    debug = True
     data_name = "receiver"
 
     # Model parameters
-    emb_dim = 512  # dimension of word embeddings
-    attention_dim = 512  # dimension of attention linear layers
-    decoder_dim = 512  # dimension of decoder RNN
+    emb_dim = 32  # dimension of word embeddings
+    attention_dim = 32  # dimension of attention linear layers
+    decoder_dim = 32  # dimension of decoder RNN
     dropout = 0.5
     device = torch.device(
         "cuda" if torch.cuda.is_available() and not debug else "cpu")  # sets device for model and PyTorch tensors
