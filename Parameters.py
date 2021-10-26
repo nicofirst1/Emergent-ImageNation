@@ -28,7 +28,7 @@ class ReceiverTrainParams:
     alpha_c = 1.  # regularization parameter for 'doubly stochastic attention', as in the paper
     print_freq = 100  # print training/validation stats every __ batches
     fine_tune_encoder = False  # fine-tune encoder?
-    checkpoint = None  # path to checkpoint, None if none
+    checkpoint = "./checkpoint_receiver.pth.tar"  # path to checkpoint, None if none
 
 
 class SenderTrainParams:
@@ -37,7 +37,8 @@ class SenderTrainParams:
     ### TRAINING
     epochs = 20
     batch_size = 4
-    cuda = True
+    cuda = torch.device(
+        "cuda" if torch.cuda.is_available() and not debug else "cpu")
 
     ### DALLe training params
 
@@ -56,6 +57,8 @@ class SenderTrainParams:
     dim_head = 64
     reversible = True
 
+    checkpoint = "./checkpoint_sender.pth.tar"  # path to checkpoint, None if none
+
 
 class PathParams:
     base_path = "/home/dizzi/Desktop/coco/"
@@ -63,6 +66,8 @@ class PathParams:
     preprocessed_dir = os.path.join(base_path, "preprocessed")
 
     wandb_dir = "./wandb_metadata"
+
+
 
 
 class DataParams:

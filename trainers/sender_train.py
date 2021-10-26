@@ -1,100 +1,106 @@
-import os
-
 import torch
-import wandb
-from dalle_pytorch.tokenizer import tokenizer
-from rich.progress import track
-from torch.nn.utils import clip_grad_norm_
+from egg import core
+from egg.core import LoggingStrategy, CheckpointSaver, ProgressBarLogger
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 from Parameters import SenderTrainParams, PathParams
 from arhcs.sender import get_sender, get_dalle_params
 from dataset import CaptionDataset
-
-st_params = SenderTrainParams()
-pt_params=PathParams()
-
-model_config = get_dalle_params()
-weights = "./dalle.pt"
+from utils import CustomWandbLogger
 
 
-train_data = CaptionDataset(pt_params.preprocessed_dir, "TRAIN")
+class SenderTrain(torch.nn.Module):
+    """
+    Sender train logic for egg
+    Simply gets the data (images, text, mask), gets it to dalle and return loss and interactions
+    """
 
-dl = DataLoader(train_data, batch_size=st_params.batch_size, shuffle=True, drop_last=True)
+    def __init__(self, dalle,
+                 train_logging_strategy: LoggingStrategy = None,
+                 test_logging_strategy: LoggingStrategy = None, ):
+        super(SenderTrain, self).__init__()
+        self.dalle = dalle
 
-dalle = get_sender(cuda=st_params.cuda)
+        self.train_logging_strategy = (
+            LoggingStrategy()
+            if train_logging_strategy is None
+            else train_logging_strategy
+        )
+        self.test_logging_strategy = (
+            LoggingStrategy()
+            if test_logging_strategy is None
+            else test_logging_strategy
+        )
 
-if weights is not None:
-    weights=torch.load(weights)
-    dalle.load_state_dict(weights)
-    print("Dalle weights loaded!")
+    def forward(self, images, text, mask, something):
+        loss = self.dalle(text, images, mask=mask, return_loss=True)
 
-# optimizer
+        logging_strategy = (
+            self.train_logging_strategy if self.training else self.test_logging_strategy
+        )
+        interaction = logging_strategy.filtered_interaction(
+            sender_input=None,  # image
+            labels=text,
+            message_length=mask,
+            receiver_input=None,
+            aux_input=None,
+            message=None,
+            receiver_output=None,
+            aux={},
+        )
 
-opt = Adam(dalle.parameters(), lr=st_params.lr)
+        return loss, interaction
 
-# experiment tracker
 
-if not os.path.isdir(pt_params.wandb_dir):
-    os.mkdir(pt_params.wandb_dir)
+if __name__ == '__main__':
+    # get configurations
+    core.init()
+    st_params = SenderTrainParams()
+    pt_params = PathParams()
+    model_config = get_dalle_params()
 
-if not st_params.debug: run = wandb.init(project='dalle_train_transformer', config=model_config, dir=pt_params.wandb_dir)
-# training
+    # get dataloader
+    train_data = CaptionDataset(pt_params.preprocessed_dir, "TRAIN")
+    val_data = CaptionDataset(pt_params.preprocessed_dir, "VAL")
 
-for epoch in range(st_params.epochs):
-    for i, (images, text, mask) in track(enumerate(dl), total=len(dl), description="Batches..."):
+    train_dl = DataLoader(train_data, batch_size=st_params.batch_size, shuffle=True, drop_last=True)
+    val_dl = DataLoader(val_data, batch_size=st_params.batch_size, shuffle=True, drop_last=True)
 
-        if st_params.cuda:
-            text, images, mask = map(lambda t: t.cuda(), (text, images, mask))
+    # initialize dalle and game
+    dalle = get_sender(model_config)
+    sender_train = SenderTrain(dalle)
 
-        loss = dalle(text, images, mask=mask, return_loss=True)
+    # optimizer
+    opt = Adam(dalle.parameters(), lr=st_params.lr)
 
-        loss.backward()
-        clip_grad_norm_(dalle.parameters(), st_params.grad_clip_norm)
+    # init callbacks
+    wandb_logget = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=dalle,
+                                     project='dalle_train_transformer', config=model_config,
+                                     dir=pt_params.wandb_dir, opts={})
 
-        opt.step()
-        opt.zero_grad()
+    checkpoint_logger = CheckpointSaver(checkpoint_path=st_params.checkpoint, max_checkpoints=3)
 
-        log = {}
+    progressbar = ProgressBarLogger(n_epochs=st_params.epochs, train_data_len=len(train_data),
+                                    test_data_len=len(val_data), use_info_table=False)
 
-        if i % 100 == 0:
-            log = {
-                **log,
-                'epoch': epoch,
-                'iter': i,
-                'loss': loss.item()
-            }
+    callbacks = [
+        wandb_logget,
+        checkpoint_logger,
+        progressbar
+    ]
 
-        if i % 1000 == 0:
-            sample_text = text[:1]
-            token_list = sample_text.masked_select(sample_text != 0).tolist()
-            decoded_text = tokenizer.decode(token_list)
+    # training
 
-            image = dalle.generate_images(
-                text[:1],
-                mask=mask[:1],
-                filter_thres=0.9  # topk sampling at 0.9
-            )
-            image = image[0]
-            torch.save(dalle.state_dict(), f'./dalle.pt')
-            if not st_params.debug: wandb.save(f'./dalle.pt')
+    trainer = core.Trainer(
+        game=sender_train,
+        optimizer=opt,
+        train_data=train_dl,
+        validation_data=val_dl,
+        device=st_params.cuda,
+        grad_norm=True,
+        callbacks=callbacks
 
-            log = {
-                **log,
-                'image': wandb.Image(image, caption=decoded_text)
-            }
+    )
 
-        if not st_params.debug: wandb.log(log)
-
-    # save trained model to wandb as an artifact every epoch's end
-
-    model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(model_config))
-    model_artifact.add_file('dalle.pt')
-
-torch.save(dalle.state_dict(), f'./dalle-final.pt')
-if not st_params.debug: wandb.save('./dalle-final.pt')
-model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(model_config))
-model_artifact.add_file('dalle-final.pt')
-
-if not st_params.debug: wandb.finish()
+    trainer.train(st_params.epochs)

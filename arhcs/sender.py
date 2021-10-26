@@ -18,15 +18,12 @@ def get_dalle_params():
     )
 
 
-def get_sender(dalle_params=None, cuda=False) -> DALLE:
+def get_sender(dalle_params=None) -> DALLE:
     if dalle_params is None:
         dalle_params = get_dalle_params()
 
     vae = VQGanVAE()  # loads pretrained taming Transformer
 
     dalle = DALLE(vae=vae, **dalle_params)
-
-    if cuda:
-        dalle = dalle.cuda()
 
     return dalle
