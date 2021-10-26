@@ -75,8 +75,8 @@ if __name__ == '__main__':
     opt = Adam(dalle.parameters(), lr=st_params.lr)
 
     # init callbacks
-    wandb_logget = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=dalle,
-                                     project='dalle_train_transformer', config=model_config,
+    wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=dalle,
+                                     project='sender_train', config=model_config,
                                      dir=pt_params.wandb_dir, opts={})
 
     checkpoint_logger = CheckpointSaver(checkpoint_path=st_params.checkpoint, max_checkpoints=3)
@@ -85,7 +85,7 @@ if __name__ == '__main__':
                                     test_data_len=len(val_data), use_info_table=False)
 
     callbacks = [
-        wandb_logget,
+        wandb_logger,
         checkpoint_logger,
         progressbar
     ]
