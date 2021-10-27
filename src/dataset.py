@@ -212,7 +212,7 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, out
             h = open(h5_path, "wb")
             pickle.dump(impaths, h)
         else:
-            h = h5py.File(h5_path, 'wb')
+            h = h5py.File(h5_path, 'w')
             dataset = h.create_dataset('images', (len(impaths), 3, 256, 256), dtype='uint8')
             # Make a note of the number of captions we are sampling per image
             h.attrs['captions_per_image'] = captions_per_image
