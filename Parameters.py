@@ -13,10 +13,8 @@ class Params:
     #    METHODS
     ##########################
 
-
-
     def __init__(self):
-        print(f"{self.__class__.__name__} initialized")
+        # print(f"{self.__class__.__name__} initialized")
 
         self.__initialize_dirs()
 
@@ -101,12 +99,21 @@ class DebugParams(Params):
     Irrelevant if debug=False
     """
     debug = False
-    device = torch.device(
-        "cuda" if torch.cuda.is_available() and not debug else "cpu")
-    cudnn.benchmark = True if not debug else False  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
-    workers = 1 if not debug else 0  # for data-loading; right now, only 1 works with h5py
-    batch_size = 32 if not debug else 2
-    pin_memory = True if not debug else False
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    cudnn.benchmark = True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
+    workers = 1  # for data-loading; right now, only 1 works with h5py
+    batch_size = 32
+    pin_memory = True
+
+    def __init__(self):
+        super(DebugParams, self).__init__()
+
+        if self.debug:
+            self.device = torch.device("cpu")
+            cudnn.benchmark = False
+            self.workers = 0
+            self.batch_size = 2
+            self.pin_memory = False
 
 
 class SenderParams(Params):

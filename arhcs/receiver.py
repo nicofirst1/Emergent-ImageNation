@@ -106,7 +106,7 @@ class DecoderWithAttention(nn.Module):
         self.decoder_dim = decoder_dim
         self.vocab_size = vocab_size
         self.dropout = dropout
-        self, device = device
+        self.device = device
 
         self.attention = Attention(encoder_dim, decoder_dim, attention_dim)  # attention network
 
