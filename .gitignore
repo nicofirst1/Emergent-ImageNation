@@ -204,17 +204,19 @@ fabric.properties
 .idea/caches/build_file_checksums.ser
 
 ### wanbd
-.trainers/wandb/**
-.trainers/dalle.pt
+.src/trainers/wandb/**
+.src/trainers/dalle.pt
 
-trainers/wandb/
+src/trainers/wandb/
 
 *.pt
 
-trainers/taming/
+src/trainers/taming/
 
 .idea/
 
-trainers/wandb_metadata/
+src/trainers/wandb_metadata/
 
 *.tar
+
+preprocessed/

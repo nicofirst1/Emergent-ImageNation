@@ -322,7 +322,7 @@ if __name__ == '__main__':
     train_caption_ann = os.path.join(ann_path, "captions_train2017.json")
     val_caption_ann = os.path.join(ann_path, "captions_val2017.json")
     karpathy_json_path = os.path.join(ann_path, "coco_raw.json")
-    output_dir = os.path.join(base_path, "preprocessed")
+    output_dir = "./preprocessed"
 
     data_name = f"{params.captions_per_image}_cap_per_img_"
 
@@ -332,7 +332,7 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
-    if False:
+    if True:
         create_input_files(karpathy_json_path=karpathy_json_path,
                            image_folder=base_path,
                            captions_per_image=params.captions_per_image,

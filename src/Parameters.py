@@ -143,7 +143,7 @@ class SenderParams(Params):
 class PathParams(Params):
     base_path = "/home/dizzi/Desktop/coco/"
 
-    preprocessed_dir = os.path.join(base_path, "preprocessed")
+    preprocessed_dir =  "./preprocessed"
 
     wandb_dir = "./wandb_metadata"
 

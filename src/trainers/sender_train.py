@@ -4,10 +4,10 @@ from egg.core import LoggingStrategy, CheckpointSaver, ProgressBarLogger
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from Parameters import SenderParams, PathParams, DebugParams
-from arhcs.sender import get_sender, get_sender_params
-from dataset import CaptionDataset, get_dataloaders
-from utils import CustomWandbLogger
+from src.Parameters import SenderParams, PathParams, DebugParams
+from src.arhcs.sender import get_sender, get_sender_params
+from src.dataset import CaptionDataset, get_dataloaders
+from src.utils import CustomWandbLogger
 
 
 class SenderTrain(torch.nn.Module):

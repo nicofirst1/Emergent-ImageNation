@@ -1,6 +1,6 @@
 from dalle_pytorch import DALLE, VQGanVAE
 
-from Parameters import DataParams, SenderParams
+from src.Parameters import DataParams, SenderParams
 
 
 def get_sender_params():

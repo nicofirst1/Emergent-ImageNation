@@ -113,3 +113,28 @@ def accuracy(scores, targets, k):
     correct = ind.eq(targets.view(-1, 1).expand_as(ind))
     correct_total = correct.view(-1).float().sum()  # 0D tensor
     return correct_total.item() * (100.0 / batch_size)
+
+
+from sentence_transformers import SentenceTransformer, util
+
+
+def SBERT_loss():
+    def inner(true_description, receiver_output):
+        """
+        Estimate the Cosine similarity among sentences
+        using SBERT
+        https://www.sbert.net/docs/usage/semantic_textual_similarity.html
+        https://arxiv.org/abs/1908.10084
+        https://github.com/UKPLab/sentence-transformers
+        """
+
+        emb1 = model.encode(receiver_output)
+        emb2 = model.encode(true_description)
+
+        loss = -util.cos_sim(emb1, emb2)
+        print(loss)
+
+        return loss
+
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    return inner

@@ -2,7 +2,7 @@ import torch
 import torchvision
 from torch import nn
 
-from Parameters import ReceiverParams, DataParams, DebugParams
+from src.Parameters import ReceiverParams, DataParams, DebugParams
 
 
 class Encoder(nn.Module):

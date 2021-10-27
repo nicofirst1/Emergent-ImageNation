@@ -1,30 +1,29 @@
 import torch.optim
 import torch.utils.data
-import torchvision.transforms as transforms
 from egg import core
 from egg.core import LoggingStrategy, ProgressBarLogger, CheckpointSaver
-from torch import nn
-from torch.nn.utils.rnn import pack_padded_sequence
 
-from Parameters import PathParams, ReceiverParams, DataParams, DebugParams
-from arhcs.receiver import get_recevier
+from src.Parameters import PathParams, ReceiverParams, DataParams, SenderParams, DebugParams
+from src.arhcs.receiver import get_recevier
 # Data parameters
-from dataset import get_dataloaders
-from utils import CustomWandbLogger
+from src.arhcs.sender import get_sender, get_sender_params
+from src.dataset import get_dataloaders
+from src.utils import CustomWandbLogger, SBERT_loss
 
 
-class ReceiverTrain(torch.nn.Module):
+class EmImTrain(torch.nn.Module):
     """
     Sender train logic for egg
     Simply gets the data (images, text, mask), gets it to dalle and return loss and interactions
     """
 
-    def __init__(self, encoder, decoder,
+    def __init__(self, encoder, decoder, sender,
                  train_logging_strategy: LoggingStrategy = None,
                  test_logging_strategy: LoggingStrategy = None, ):
-        super(ReceiverTrain, self).__init__()
+        super(EmImTrain, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
+        self.sender = sender
 
         self.train_logging_strategy = (
             LoggingStrategy()
@@ -37,37 +36,20 @@ class ReceiverTrain(torch.nn.Module):
             else test_logging_strategy
         )
 
-        self.device=DebugParams().device
-
-        self.loss_func = nn.CrossEntropyLoss().to(self.device)
+        self.loss_function = SBERT_loss()
 
     def forward(self, images, text, mask, something):
+        sender_images = self.sender.generate_images_trainmode(text, mask=mask)
+
         # Forward prop.
-        imgs = encoder(images)
+        imgs = encoder(sender_images)
         scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, text, mask)
 
         # for logging
-        img = images[0]
-        _, preds = torch.max(scores[0], dim=1)
+        img = sender_images[0]
+        _, preds = torch.max(scores, dim=2)
 
-        # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
-        targets = caps_sorted[:, 1:]
-
-        # move everything to same device
-        targets = targets.to(self.device)
-        scores = scores.to(self.device)
-        alphas = alphas.to(self.device)
-
-        # Remove timesteps that we didn't decode at, or are pads
-        # pack_padded_sequence is an easy trick to do this
-        scores, _, _, _ = pack_padded_sequence(scores, decode_lengths, batch_first=True)
-        targets, _, _, _ = pack_padded_sequence(targets, decode_lengths, batch_first=True)
-
-        # Calculate loss
-        loss = self.loss_func(scores, targets)
-
-        # Add doubly stochastic attention regularization
-        loss += rt_params.alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
+        loss = self.loss_function(text, preds)
 
         logging_strategy = (
             self.train_logging_strategy if self.training else self.test_logging_strategy
@@ -82,7 +64,6 @@ class ReceiverTrain(torch.nn.Module):
             receiver_output=preds,
             aux=dict(
                 scores=scores,
-                targets=targets
             ),
         )
 
@@ -93,14 +74,31 @@ if __name__ == '__main__':
     """
         Training and validation.
     """
+
+    # init parameters
     core.init(params=[])
+    st_params = SenderParams()
     rt_params = ReceiverParams()
     data_params = DataParams()
     pt_params = PathParams()
+    deb_params = DebugParams()
 
+    #################
+    #   SENDER
+    #################
+    # initialize Sender
+    model_config = get_sender_params()
+    sender = get_sender(model_config)
+
+    # optimizer
+    sender_opt = dict(params=filter(lambda p: p.requires_grad, sender.parameters()),
+                      lr=st_params.lr)
+
+    #################
+    #   RECEIVER
+    #################
     # get architecture
     decoder, encoder = get_recevier()
-    receiver_train = ReceiverTrain(encoder, decoder)
 
     # initialize optimizers
 
@@ -110,23 +108,23 @@ if __name__ == '__main__':
     enc_opt = dict(params=filter(lambda p: p.requires_grad, encoder.parameters()),
                    lr=rt_params.encoder_lr)
 
-    opt_list = [dec_opt]
+    #################
+    #   OPTIMIZERS
+    #################
+
+    opt_list = [sender_opt, dec_opt]
     if rt_params.fine_tune_encoder:
         opt_list.append(enc_opt)
 
     joint_optim = torch.optim.Adam(opt_list)
 
     # Custom dataloaders
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-    transform = transforms.Compose([normalize])
 
-    train_dl, val_dl = get_dataloaders(transform=transform)
+    train_dl, val_dl = get_dataloaders()
 
-    # init callbacks
-    wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=None,
-                                     project='receiver_train', config={},
-                                     dir=pt_params.wandb_dir, opts={})
+    #################
+    #   CALLBACKS
+    #################
 
     checkpoint_logger = CheckpointSaver(checkpoint_path=rt_params.checkpoint, max_checkpoints=3)
 
@@ -134,19 +132,26 @@ if __name__ == '__main__':
                                     test_data_len=len(val_dl), use_info_table=False)
 
     callbacks = [
-        wandb_logger,
         checkpoint_logger,
         progressbar
     ]
 
+    if not deb_params.debug:
+        wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=sender,
+                                         project='receiver_train', config={},
+                                         dir=pt_params.wandb_dir, opts={})
+        callbacks.append(wandb_logger)
+
     # training
 
+    setting = EmImTrain(encoder, decoder, sender)
+
     trainer = core.Trainer(
-        game=receiver_train,
+        game=setting,
         optimizer=joint_optim,
         train_data=train_dl,
         validation_data=val_dl,
-        device=rt_params.device,
+        device=deb_params.device,
         grad_norm=rt_params.grad_clip,
         callbacks=callbacks
 
