@@ -4,7 +4,7 @@ from egg.core import LoggingStrategy, CheckpointSaver, ProgressBarLogger
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from Parameters import SenderParams, PathParams
+from Parameters import SenderParams, PathParams, DebugParams
 from arhcs.sender import get_sender, get_sender_params
 from dataset import CaptionDataset, get_dataloaders
 from utils import CustomWandbLogger
@@ -58,6 +58,7 @@ if __name__ == '__main__':
     core.init(params=[])
     st_params = SenderParams()
     pt_params = PathParams()
+    deb_params = DebugParams()
     model_config = get_sender_params()
 
     # get dataloader
@@ -92,9 +93,9 @@ if __name__ == '__main__':
     trainer = core.Trainer(
         game=sender_train,
         optimizer=opt,
-        train_data=train_dl,
-        validation_data=val_dl,
-        device=st_params.cuda,
+        train_data=train_data,
+        validation_data=val_data,
+        device=deb_params.device,
         grad_norm=True,
         callbacks=callbacks
 
