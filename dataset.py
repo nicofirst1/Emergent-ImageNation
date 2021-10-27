@@ -11,9 +11,9 @@ import torch
 from dalle_pytorch.tokenizer import SimpleTokenizer
 from imageio import imread
 from rich.progress import track
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
-from Parameters import DataParams
+from Parameters import DataParams, PathParams, DebugParams
 
 
 class CaptionDataset(Dataset):
@@ -88,6 +88,22 @@ class CaptionDataset(Dataset):
 
     def __len__(self):
         return self.dataset_size
+
+
+def get_dataloaders(transform=None):
+    pt_params = PathParams()
+    db_params = DebugParams()
+
+    # get dataloader
+    train_data = CaptionDataset(pt_params.preprocessed_dir, "TRAIN", transform=transform)
+    val_data = CaptionDataset(pt_params.preprocessed_dir, "VAL", transform=transform)
+
+    train_dl = DataLoader(train_data, batch_size=db_params.batch_size, shuffle=True, drop_last=True,
+                          num_workers=db_params.workers, pin_memory=db_params.pin_memory)
+    val_dl = DataLoader(val_data, batch_size=db_params.batch_size, shuffle=True, drop_last=True,
+                        num_workers=db_params.workers, pin_memory=db_params.pin_memory)
+
+    return train_dl, val_dl
 
 
 def create_input_files(karpathy_json_path, image_folder, captions_per_image, min_word_freq, output_folder, data_name,
@@ -196,7 +212,7 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
 
                 #  encode every caption
                 captions = ['<|startoftext|> ' + cap + ' <|endoftext|>' for cap in captions]
-                ec= tokenizer.tokenize(captions, context_length=max_len)
+                ec = tokenizer.tokenize(captions, context_length=max_len)
                 enc_captions.append(ec)
                 caplens.append([torch.count_nonzero(cap) for cap in ec])
 

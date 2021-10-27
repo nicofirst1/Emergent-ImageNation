@@ -1,10 +1,10 @@
 from dalle_pytorch import DALLE, VQGanVAE
 
-from Parameters import DataParams, SenderTrainParams
+from Parameters import DataParams, SenderParams
 
 
-def get_dalle_params():
-    params = SenderTrainParams()
+def get_sender_params():
+    params = SenderParams()
     dt= DataParams()
 
     return dict(
@@ -20,7 +20,7 @@ def get_dalle_params():
 
 def get_sender(dalle_params=None) -> DALLE:
     if dalle_params is None:
-        dalle_params = get_dalle_params()
+        dalle_params = get_sender_params()
 
     vae = VQGanVAE()  # loads pretrained taming Transformer
 

@@ -6,10 +6,10 @@ from egg.core import LoggingStrategy, ProgressBarLogger, CheckpointSaver
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
 
-from Parameters import PathParams, ReceiverTrainParams, DataParams
+from Parameters import PathParams, ReceiverParams, DataParams
 from arhcs.receiver import get_recevier
 # Data parameters
-from dataset import CaptionDataset
+from dataset import get_dataloaders
 from utils import CustomWandbLogger
 
 
@@ -91,13 +91,13 @@ if __name__ == '__main__':
     """
         Training and validation.
     """
-    core.init()
-    rt_params = ReceiverTrainParams()
+    core.init(params=[])
+    rt_params = ReceiverParams()
     data_params = DataParams()
     pt_params = PathParams()
 
     # get architecture
-    decoder, encoder = get_recevier(rt_params, data_params)
+    decoder, encoder = get_recevier()
     receiver_train = ReceiverTrain(encoder, decoder)
 
     # initialize optimizers
@@ -119,15 +119,7 @@ if __name__ == '__main__':
                                      std=[0.229, 0.224, 0.225])
     transform = transforms.Compose([normalize])
 
-    train_data = CaptionDataset(pt_params.preprocessed_dir, "TRAIN", transform=transform)
-    val_data = CaptionDataset(pt_params.preprocessed_dir, "VAL", transform=transform)
-
-    train_dl = torch.utils.data.DataLoader(
-        train_data,
-        batch_size=rt_params.batch_size, shuffle=True, num_workers=rt_params.workers, pin_memory=False)
-    val_dl = torch.utils.data.DataLoader(
-        val_data,
-        batch_size=rt_params.batch_size, shuffle=True, num_workers=rt_params.workers, pin_memory=False)
+    train_dl, val_dl = get_dataloaders(transform=transform)
 
     # init callbacks
     wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=None,
@@ -136,8 +128,8 @@ if __name__ == '__main__':
 
     checkpoint_logger = CheckpointSaver(checkpoint_path=rt_params.checkpoint, max_checkpoints=3)
 
-    progressbar = ProgressBarLogger(n_epochs=rt_params.epochs, train_data_len=len(train_data),
-                                    test_data_len=len(val_data), use_info_table=False)
+    progressbar = ProgressBarLogger(n_epochs=rt_params.epochs, train_data_len=len(train_dl),
+                                    test_data_len=len(val_dl), use_info_table=False)
 
     callbacks = [
         wandb_logger,

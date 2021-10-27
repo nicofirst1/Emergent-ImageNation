@@ -4,9 +4,9 @@ from egg.core import LoggingStrategy, CheckpointSaver, ProgressBarLogger
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 
-from Parameters import SenderTrainParams, PathParams
-from arhcs.sender import get_sender, get_dalle_params
-from dataset import CaptionDataset
+from Parameters import SenderParams, PathParams
+from arhcs.sender import get_sender, get_sender_params
+from dataset import CaptionDataset, get_dataloaders
 from utils import CustomWandbLogger
 
 
@@ -55,17 +55,14 @@ class SenderTrain(torch.nn.Module):
 
 if __name__ == '__main__':
     # get configurations
-    core.init()
-    st_params = SenderTrainParams()
+    core.init(params=[])
+    st_params = SenderParams()
     pt_params = PathParams()
-    model_config = get_dalle_params()
+    model_config = get_sender_params()
 
     # get dataloader
-    train_data = CaptionDataset(pt_params.preprocessed_dir, "TRAIN")
-    val_data = CaptionDataset(pt_params.preprocessed_dir, "VAL")
+    train_data, val_data =get_dataloaders()
 
-    train_dl = DataLoader(train_data, batch_size=st_params.batch_size, shuffle=True, drop_last=True)
-    val_dl = DataLoader(val_data, batch_size=st_params.batch_size, shuffle=True, drop_last=True)
 
     # initialize dalle and game
     dalle = get_sender(model_config)

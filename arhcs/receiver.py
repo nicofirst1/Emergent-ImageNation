@@ -1,8 +1,8 @@
 import torch
-from torch import nn
 import torchvision
+from torch import nn
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from Parameters import ReceiverParams, DataParams, DebugParams
 
 
 class Encoder(nn.Module):
@@ -31,7 +31,7 @@ class Encoder(nn.Module):
         :param images: images, a tensor of dimensions (batch_size, 3, image_size, image_size)
         :return: encoded images
         """
-        #print(images.shape)
+        # print(images.shape)
         out = self.resnet(images)  # (batch_size, 2048, image_size/32, image_size/32)
         out = self.adaptive_pool(out)  # (batch_size, 2048, encoded_image_size, encoded_image_size)
         out = out.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
@@ -85,12 +85,11 @@ class Attention(nn.Module):
 
 
 class DecoderWithAttention(nn.Module):
-    
     """
     Decoder.
     """
 
-    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, encoder_dim=512, dropout=0.5):
+    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, device, encoder_dim=512, dropout=0.5):
         """
         :param attention_dim: size of attention network
         :param embed_dim: embedding size
@@ -107,6 +106,7 @@ class DecoderWithAttention(nn.Module):
         self.decoder_dim = decoder_dim
         self.vocab_size = vocab_size
         self.dropout = dropout
+        self, device = device
 
         self.attention = Attention(encoder_dim, decoder_dim, attention_dim)  # attention network
 
@@ -187,8 +187,8 @@ class DecoderWithAttention(nn.Module):
         decode_lengths = (caption_lengths - 1).tolist()
 
         # Create tensors to hold word predicion scores and alphas
-        predictions = torch.zeros(batch_size, max(decode_lengths), vocab_size).to(device)
-        alphas = torch.zeros(batch_size, max(decode_lengths), num_pixels).to(device)
+        predictions = torch.zeros(batch_size, max(decode_lengths), vocab_size).to(self.device)
+        alphas = torch.zeros(batch_size, max(decode_lengths), num_pixels).to(self.device)
 
         # At each time-step, decode by
         # attention-weighing the encoder's output based on the decoder's previous hidden state output
@@ -209,17 +209,21 @@ class DecoderWithAttention(nn.Module):
         return predictions, encoded_captions, decode_lengths, alphas, sort_ind
 
 
+def get_recevier():
+    rec_params = ReceiverParams()
+    data_params = DataParams()
+    deb_params = DebugParams()
 
-def get_recevier(rt_params, data_params):
-    decoder = DecoderWithAttention(attention_dim=rt_params.attention_dim,
-                                   embed_dim=rt_params.emb_dim,
-                                   decoder_dim=rt_params.decoder_dim,
+    decoder = DecoderWithAttention(attention_dim=rec_params.attention_dim,
+                                   embed_dim=rec_params.emb_dim,
+                                   decoder_dim=rec_params.decoder_dim,
                                    vocab_size=data_params.vocab_size,
-                                   dropout=rt_params.dropout)
+                                   dropout=rec_params.dropout,
+                                   device=deb_params.device)
     encoder = Encoder()
-    encoder.fine_tune(rt_params.fine_tune_encoder)
+    encoder.fine_tune(rec_params.fine_tune_encoder)
 
-    decoder = decoder.to(rt_params.device)
-    encoder = encoder.to(rt_params.device)
+    decoder = decoder.to(deb_params.device)
+    encoder = encoder.to(deb_params.device)
 
     return decoder, encoder
