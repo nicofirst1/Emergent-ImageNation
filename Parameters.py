@@ -154,3 +154,5 @@ class DataParams(Params):
     captions_per_image = 5  # number of captions to keep per image
     min_word_freq = 5
     max_text_seq_len = 64
+
+    generate_data_url=True

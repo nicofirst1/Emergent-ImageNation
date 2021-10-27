@@ -33,17 +33,25 @@ class CaptionDataset(Dataset):
         # Open hdf5 file where images are stored
         files = [f for f in os.listdir(data_folder) if os.path.isfile(os.path.join(data_folder, f))]
         files = [elem for elem in files if self.split in elem]
-        assert len(files) == 3, f"Found {len(files)} files in {data_folder}, need 3 (IMAGES, CAPTIONS, CAPLEN)."
 
-        hdf5 = [elem for elem in files if "IMAGES" in elem][0]
+        img_path = [elem for elem in files if "IMAGES" in elem]
         captions = [elem for elem in files if "CAPTIONS" in elem][0]
         caplens = [elem for elem in files if "CAPLENS" in elem][0]
 
-        self.h = h5py.File(os.path.join(data_folder, hdf5), 'r')
-        self.imgs = self.h['images']
+        url_image = DataParams().generate_data_url
 
-        # Captions per image
-        self.cpi = self.h.attrs['captions_per_image']
+        if url_image:
+            img_path = [elem for elem in img_path if "pkl" in elem][0]
+            with open(os.path.join(data_folder, img_path), "rb") as file:
+                self.imgs = pickle.load(file)
+            self.cpi = self.imgs.pop(0)
+        else:
+            img_path = [elem for elem in img_path if "hdf5" in elem][0]
+            h = h5py.File(os.path.join(data_folder, img_path), 'r')
+            self.imgs = h['images']
+
+            # Captions per image
+            self.cpi = h.attrs['captions_per_image']
 
         # Load encoded captions (completely into memory)
         with open(os.path.join(data_folder, captions), 'rb') as file:
@@ -62,7 +70,13 @@ class CaptionDataset(Dataset):
         random.seed(seed)
 
     def __getitem__(self, i):
-        img = torch.FloatTensor(self.imgs[i] / 255.)
+
+        img = self.imgs[i]
+        if isinstance(img, str):
+            img = imread(img)
+            img=img_processing(img)
+
+        img = torch.FloatTensor(img / 255.)
         if self.transform is not None:
             img = self.transform(img)
 
@@ -106,8 +120,22 @@ def get_dataloaders(transform=None):
     return train_dl, val_dl
 
 
-def create_input_files(karpathy_json_path, image_folder, captions_per_image, min_word_freq, output_folder, data_name,
-                       max_len=256, seed_val=8008, max_vocab_size=11000):
+def img_processing(img):
+    if len(img.shape) == 2:
+        img = img[:, :, np.newaxis]
+        img = np.concatenate([img, img, img], axis=2)
+
+    img = cv2.resize(img, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
+    img = img.transpose(2, 0, 1)
+
+    assert img.shape == (3, 256, 256)
+    assert np.max(img) <= 255
+
+    return img
+
+
+def create_input_files(karpathy_json_path, image_folder, captions_per_image, output_folder, data_name,
+                       max_len=256, seed_val=8008):
     """
     Creates input files for training, validation, and test data.
     :param karpathy_json_path: path of Karpathy JSON file with splits and captions
@@ -115,12 +143,14 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
     :param captions_per_image: number of captions to sample per image
     :param min_word_freq: words occuring less frequently than this threshold are binned as <unk>s
     :param output_folder: folder to save files
-    :param max_len: don't sample captions longer than this length
+    :param max_len: don't sample captions longer than this length, also pad shorter sentences
     """
 
     # Read Karpathy JSON
     with open(karpathy_json_path, 'r') as file:
         data = json.load(file)
+
+    data_params = DataParams()
 
     # Read image paths and captions for each image
     train_image_paths = []
@@ -141,17 +171,22 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
         if len(captions) == 0:
             continue
 
-        path = os.path.join(image_folder, img['file_path'])
+        if data_params.generate_data_url:
+            path = img['url']
+        else:
+            path = os.path.join(image_folder, img['file_path'])
 
-        if "train" in path:
+        if "train" in img['split']:
             train_image_paths.append(path)
             train_image_captions.append(captions)
-        elif "val" in path:
+        elif "val" in img['split']:
             val_image_paths.append(path)
             val_image_captions.append(captions)
-        elif "test" in path:
+        elif "test" in img['split']:
             test_image_paths.append(path)
             test_image_captions.append(captions)
+        else:
+            raise KeyError("Path not recognized")
 
     # Sanity check
     assert len(train_image_paths) == len(train_image_captions)
@@ -168,67 +203,65 @@ def create_input_files(karpathy_json_path, image_folder, captions_per_image, min
 
     for impaths, imcaps, split in iterable:
 
-        h5_path = os.path.join(output_folder, split + '_IMAGES_' + data_name + '.hdf5')
+        h5_path = split + '_IMAGES_' + data_name
+        h5_path += '.pkl' if data_params.generate_data_url else ".hdf5"
+        h5_path = os.path.join(output_folder, h5_path)
 
-        # remove h5 if already present
-        if os.path.isfile(h5_path):
-            os.remove(h5_path)
-
-        with h5py.File(h5_path, 'a') as h:
+        # Create dataset inside HDF5 file to store images
+        if data_params.generate_data_url:
+            h = open(h5_path, "wb")
+            pickle.dump(impaths, h)
+        else:
+            h = h5py.File(h5_path, 'wb')
+            dataset = h.create_dataset('images', (len(impaths), 3, 256, 256), dtype='uint8')
             # Make a note of the number of captions we are sampling per image
             h.attrs['captions_per_image'] = captions_per_image
 
-            # Create dataset inside HDF5 file to store images
-            images = h.create_dataset('images', (len(impaths), 3, 256, 256), dtype='uint8')
+        enc_captions = []
+        caplens = []
 
-            enc_captions = []
-            caplens = []
+        for i, path in track(enumerate(impaths), description=f"Creating {split} h5...", total=len(impaths)):
 
-            for i, path in track(enumerate(impaths), description=f"Creating {split} h5...", total=len(impaths)):
-
-                # Sample captions
-                if len(imcaps[i]) < captions_per_image:
-                    captions = imcaps[i] + [choice(imcaps[i]) for _ in range(captions_per_image - len(imcaps[i]))]
-                else:
-                    captions = sample(imcaps[i], k=captions_per_image)
-
-                # Sanity check
-                assert len(captions) == captions_per_image
-
-                # Read images
-                img = imread(impaths[i])
-                if len(img.shape) == 2:
-                    img = img[:, :, np.newaxis]
-                    img = np.concatenate([img, img, img], axis=2)
-
-                img = cv2.resize(img, dsize=(256, 256), interpolation=cv2.INTER_CUBIC)
-                img = img.transpose(2, 0, 1)
-
-                assert img.shape == (3, 256, 256)
-                assert np.max(img) <= 255
-
-                # Save image to HDF5 file
-                images[i] = img
-
-                #  encode every caption
-                captions = ['<|startoftext|> ' + cap + ' <|endoftext|>' for cap in captions]
-                ec = tokenizer.tokenize(captions, context_length=max_len)
-                enc_captions.append(ec)
-                caplens.append([torch.count_nonzero(cap) for cap in ec])
+            # Sample captions
+            if len(imcaps[i]) < captions_per_image:
+                captions = imcaps[i] + [choice(imcaps[i]) for _ in range(captions_per_image - len(imcaps[i]))]
+            else:
+                captions = sample(imcaps[i], k=captions_per_image)
 
             # Sanity check
-            print(f"{images.shape[0]}  == {len(enc_captions)} == {len(caplens)}")
-            assert images.shape[0] == len(enc_captions) == len(caplens)
+            assert len(captions) == captions_per_image
 
-            enc_path = os.path.join(output_folder, split + '_CAPTIONS_' + data_name + '.pkl')
-            caplens_path = os.path.join(output_folder, split + '_CAPLENS_' + data_name + '.pkl')
+            # Read images
+            if not data_params.generate_data_url:
+                img = imread(impaths[i])
+                img=img_processing(img)
 
-            # Save encoded captions and their lengths to JSON files
-            with open(enc_path, 'wb') as file:
-                pickle.dump(enc_captions, file)
+                # Save image to HDF5 file
+                dataset[i] = img
 
-            with open(caplens_path, 'wb') as file:
-                pickle.dump(caplens, file)
+            #  encode every caption
+            captions = ['<|startoftext|> ' + cap + ' <|endoftext|>' for cap in captions]
+            ec = tokenizer.tokenize(captions, context_length=max_len)
+            enc_captions.append(ec)
+            caplens.append([torch.count_nonzero(cap) for cap in ec])
+
+        # Sanity check
+        if data_params.generate_data_url:
+            assert len(impaths) == len(enc_captions) == len(caplens)
+        else:
+            assert dataset.shape[0] == len(enc_captions) == len(caplens)
+
+        h.close()
+
+        enc_path = os.path.join(output_folder, split + '_CAPTIONS_' + data_name + '.pkl')
+        caplens_path = os.path.join(output_folder, split + '_CAPLENS_' + data_name + '.pkl')
+
+        # Save encoded captions and their lengths to JSON files
+        with open(enc_path, 'wb') as file:
+            pickle.dump(enc_captions, file)
+
+        with open(caplens_path, 'wb') as file:
+            pickle.dump(caplens, file)
 
 
 def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
@@ -264,6 +297,8 @@ def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
         jimg = {}
         jimg['file_path'] = os.path.join(loc, img['file_name'])
         jimg['id'] = imgid
+        jimg['url'] = img['flickr_url']
+        jimg['split'] = loc
 
         sents = []
         annotsi = itoa[imgid]
@@ -289,7 +324,7 @@ if __name__ == '__main__':
     karpathy_json_path = os.path.join(ann_path, "coco_raw.json")
     output_dir = os.path.join(base_path, "preprocessed")
 
-    data_name = f"{params.captions_per_image}_cap_per_img_{params.min_word_freq}_min_word_freq"
+    data_name = f"{params.captions_per_image}_cap_per_img_"
 
     if not os.path.isfile(karpathy_json_path):
         preprocess_coco_ann(train_caption_ann, val_caption_ann, karpathy_json_path)
@@ -297,15 +332,14 @@ if __name__ == '__main__':
     if not os.path.isdir(output_dir):
         os.mkdir(output_dir)
 
-    if True:
+    if False:
         create_input_files(karpathy_json_path=karpathy_json_path,
                            image_folder=base_path,
                            captions_per_image=params.captions_per_image,
-                           min_word_freq=params.min_word_freq,
                            output_folder=output_dir,
                            max_len=params.max_text_seq_len,
                            data_name=data_name,
-                           max_vocab_size=params.vocab_size)
+                           )
 
     train_data = CaptionDataset(output_dir, "TRAIN")
     val_data = CaptionDataset(output_dir, "VAL")
