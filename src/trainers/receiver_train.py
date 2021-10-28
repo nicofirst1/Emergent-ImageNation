@@ -37,7 +37,7 @@ class ReceiverTrain(torch.nn.Module):
             else test_logging_strategy
         )
 
-        self.device=DebugParams().device
+        self.device = DebugParams().device
 
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
 
@@ -97,6 +97,7 @@ if __name__ == '__main__':
     rt_params = ReceiverParams()
     data_params = DataParams()
     pt_params = PathParams()
+    deb_params = DebugParams()
 
     # get architecture
     decoder, encoder = get_recevier()
@@ -123,21 +124,21 @@ if __name__ == '__main__':
 
     train_dl, val_dl = get_dataloaders(transform=transform)
 
-    # init callbacks
-    wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=None,
-                                     project='receiver_train', config={},
-                                     dir=pt_params.wandb_dir, opts={})
-
     checkpoint_logger = CheckpointSaver(checkpoint_path=rt_params.checkpoint, max_checkpoints=3)
 
     progressbar = ProgressBarLogger(n_epochs=rt_params.epochs, train_data_len=len(train_dl),
                                     test_data_len=len(val_dl), use_info_table=False)
 
     callbacks = [
-        wandb_logger,
         checkpoint_logger,
         progressbar
     ]
+
+    if not deb_params.debug:
+        wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=None,
+                                         project='receiver_train', model_config={},
+                                         dir=pt_params.wandb_dir, opts={}, log_type="receiver")
+        callbacks.append(wandb_logger)
 
     # training
 
@@ -146,7 +147,7 @@ if __name__ == '__main__':
         optimizer=joint_optim,
         train_data=train_dl,
         validation_data=val_dl,
-        device=rt_params.device,
+        device=deb_params.device,
         grad_norm=rt_params.grad_clip,
         callbacks=callbacks
 

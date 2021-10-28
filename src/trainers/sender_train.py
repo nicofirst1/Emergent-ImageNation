@@ -2,11 +2,10 @@ import torch
 from egg import core
 from egg.core import LoggingStrategy, CheckpointSaver, ProgressBarLogger
 from torch.optim import Adam
-from torch.utils.data import DataLoader
 
 from src.Parameters import SenderParams, PathParams, DebugParams
 from src.arhcs.sender import get_sender, get_sender_params
-from src.dataset import CaptionDataset, get_dataloaders
+from src.dataset import get_dataloaders
 from src.utils import CustomWandbLogger
 
 
@@ -62,8 +61,7 @@ if __name__ == '__main__':
     model_config = get_sender_params()
 
     # get dataloader
-    train_data, val_data =get_dataloaders()
-
+    train_data, val_data = get_dataloaders()
 
     # initialize dalle and game
     dalle = get_sender(model_config)
@@ -73,9 +71,6 @@ if __name__ == '__main__':
     opt = Adam(dalle.parameters(), lr=st_params.lr)
 
     # init callbacks
-    wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=dalle,
-                                     project='sender_train', config=model_config,
-                                     dir=pt_params.wandb_dir, opts={})
 
     checkpoint_logger = CheckpointSaver(checkpoint_path=st_params.checkpoint, max_checkpoints=3)
 
@@ -83,11 +78,15 @@ if __name__ == '__main__':
                                     test_data_len=len(val_data), use_info_table=False)
 
     callbacks = [
-        wandb_logger,
         checkpoint_logger,
         progressbar
     ]
 
+    if not deb_params.debug:
+        wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=dalle,
+                                         project='sender_train', model_config=model_config,
+                                         dir=pt_params.wandb_dir, opts={}, log_type='sender')
+        callbacks.append(wandb_logger)
     # training
 
     trainer = core.Trainer(

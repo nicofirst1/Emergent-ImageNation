@@ -9,18 +9,23 @@ from egg.core.callbacks import WandbLogger
 
 class CustomWandbLogger(WandbLogger):
 
-    def __init__(self, log_step, image_log_step, dalle, dir, config, **kwargs):
+    def __init__(self, log_step, image_log_step, dalle, dir, model_config, log_type, **kwargs):
 
         # create wandb dir if not existing
         if not os.path.isdir(dir):
             os.mkdir(dir)
 
-        super(CustomWandbLogger, self).__init__(dir=dir, config=config, **kwargs)
+        super(CustomWandbLogger, self).__init__(dir=dir, config=model_config, **kwargs)
 
         self.log_step = log_step
         self.image_log_step = image_log_step
         self.sender = dalle
-        self.model_config = config
+        self.model_config = model_config
+
+        assert log_type in ['sender', 'receiver', 'emim']
+        self.log_type = log_type
+
+        self.epoch = 0
 
     def sender_image_log(self, flag, logs):
         """
@@ -62,6 +67,26 @@ class CustomWandbLogger(WandbLogger):
 
         return {f'{flag}_receiver': wandb.Image(img, caption=preds)}
 
+    def emim_image_log(self, flag, logs):
+        """
+        Logs both the original pair (image/caption) and the predicted one (sender image and receiver caption)
+        :param flag:
+        :param logs:
+        :return:
+        """
+        sample_text = logs.labels[:1]
+        token_list = sample_text.masked_select(sample_text != 0).tolist()
+        original_caption = tokenizer.decode(token_list)
+
+        original_image = logs.sender_input
+
+        pred_caption = tokenizer.decode(logs.receiver_output)
+        pred_image = logs.aux['sender_img']
+
+        return {f'{flag}_original': wandb.Image(original_image, caption=original_caption),
+                f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
+                }
+
     def on_batch_end(
             self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
     ):
@@ -73,18 +98,21 @@ class CustomWandbLogger(WandbLogger):
         wandb_log = {
             f"{flag}_loss": loss,
             f"{flag}_iter": batch_id,
+            f"{flag}_epoch": self.epoch
         }
 
-        if self.sender is None:
+        if self.log_type is not 'sender':
             top5 = accuracy(logs.aux['scores'], logs.aux['targets'], 5)
             wandb_log[f"{flag}_top5"] = top5
 
         # image logging
         if batch_id % self.image_log_step == 0:
-            if self.sender is not None:
+            if self.log_type == 'sender':
                 img_log = self.sender_image_log(flag, logs)
-            else:
+            elif self.log_type == 'receiver':
                 img_log = self.receiver_image_log(flag, logs)
+            else:
+                img_log = self.emim_image_log(flag, logs)
 
             wandb_log.update(img_log)
 
@@ -93,10 +121,11 @@ class CustomWandbLogger(WandbLogger):
     def on_epoch_end(self, loss: float, logs: Interaction, epoch: int):
         model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(self.model_config))
         model_artifact.add_file('dalle.pt')
+        self.epoch += 1
 
     def on_validation_end(self, loss: float, logs: Interaction, epoch: int):
-        a=1
-        #todo: add    bleu4 = corpus_bleu(references, hypotheses)
+        a = 1
+        # todo: add    bleu4 = corpus_bleu(references, hypotheses)
 
 
 def accuracy(scores, targets, k):
@@ -119,6 +148,7 @@ from sentence_transformers import SentenceTransformer, util
 
 
 def SBERT_loss():
+    # fixme: put on specific device
     def inner(true_description, receiver_output):
         """
         Estimate the Cosine similarity among sentences
@@ -128,11 +158,24 @@ def SBERT_loss():
         https://github.com/UKPLab/sentence-transformers
         """
 
-        emb1 = model.encode(receiver_output)
-        emb2 = model.encode(true_description)
+        def encode(sentences):
+            features = model.tokenize(sentences)
+            # features = batch_to_device(features, "cuda")
+            out_features = model.forward(features)
+
+            return out_features
+
+        true_description = [tokenizer.decode(elem) for elem in true_description]
+        receiver_output = [tokenizer.decode(elem) for elem in receiver_output]
+
+        emb1 = encode(receiver_output)
+        emb2 = encode(true_description)
+
+        emb1 = emb1['sentence_embedding']
+        emb2 = emb2['sentence_embedding']
 
         loss = -util.cos_sim(emb1, emb2)
-        print(loss)
+        loss = torch.sum(loss, dim=0).mean()
 
         return loss
 

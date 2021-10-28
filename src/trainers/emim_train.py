@@ -2,6 +2,9 @@ import torch.optim
 import torch.utils.data
 from egg import core
 from egg.core import LoggingStrategy, ProgressBarLogger, CheckpointSaver
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.profiler import profile, record_function, ProfilerActivity
+from torchvision.transforms import transforms
 
 from src.Parameters import PathParams, ReceiverParams, DataParams, SenderParams, DebugParams
 from src.arhcs.receiver import get_recevier
@@ -37,19 +40,34 @@ class EmImTrain(torch.nn.Module):
         )
 
         self.loss_function = SBERT_loss()
+        self.transform = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                              std=[0.229, 0.224, 0.225])
 
     def forward(self, images, text, mask, something):
+
+        # get image from sender
         sender_images = self.sender.generate_images_trainmode(text, mask=mask)
 
-        # Forward prop.
+        # save for log
+        sender_img = sender_images[0]
+        # normalize and sub std
+        sender_images = self.transform(sender_images)
+
+        # call receiver with generated image
         imgs = encoder(sender_images)
         scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, text, mask)
 
         # for logging
-        img = sender_images[0]
+        img = images[0]
+        targets = caps_sorted[:, 1:]
         _, preds = torch.max(scores, dim=2)
 
+        scores, _, _, _ = pack_padded_sequence(scores, decode_lengths, batch_first=True)
+        targets, _, _, _ = pack_padded_sequence(targets, decode_lengths, batch_first=True)
+
+        # estimate loss
         loss = self.loss_function(text, preds)
+
 
         logging_strategy = (
             self.train_logging_strategy if self.training else self.test_logging_strategy
@@ -61,11 +79,15 @@ class EmImTrain(torch.nn.Module):
             receiver_input=None,
             aux_input=None,
             message=None,
-            receiver_output=preds,
+            receiver_output=preds[0],
             aux=dict(
                 scores=scores,
+                sender_img=sender_img,
+                targets=targets,
             ),
         )
+
+        torch.cuda.empty_cache()
 
         return loss, interaction
 
@@ -136,10 +158,10 @@ if __name__ == '__main__':
         progressbar
     ]
 
-    if not deb_params.debug:
+    if not deb_params.debug and True:
         wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=sender,
-                                         project='receiver_train', config={},
-                                         dir=pt_params.wandb_dir, opts={})
+                                         project='emim_train', model_config={},
+                                         dir=pt_params.wandb_dir, opts={}, log_type="emim")
         callbacks.append(wandb_logger)
 
     # training
