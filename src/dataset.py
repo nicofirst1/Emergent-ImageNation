@@ -13,7 +13,7 @@ from imageio import imread
 from rich.progress import track
 from torch.utils.data import Dataset, DataLoader
 
-from Parameters import DataParams, PathParams, DebugParams
+from src.Parameters import DataParams, PathParams, DebugParams
 
 
 class CaptionDataset(Dataset):
@@ -313,36 +313,35 @@ def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
 if __name__ == '__main__':
 
     # change base_path depending where you have coco
-    base_path = "/home/dizzi/Desktop/coco/"
 
-    params = DataParams()
+    data_params = DataParams()
+    path_params = PathParams()
 
     # dependent paths
-    ann_path = os.path.join(base_path, "annotations")
+    ann_path = os.path.join(path_params.coco_path, "annotations")
     train_caption_ann = os.path.join(ann_path, "captions_train2017.json")
     val_caption_ann = os.path.join(ann_path, "captions_val2017.json")
     karpathy_json_path = os.path.join(ann_path, "coco_raw.json")
-    output_dir = "./preprocessed"
 
-    data_name = f"{params.captions_per_image}_cap_per_img_"
+    data_name = f"{data_params.captions_per_image}_cap_per_img"
 
     if not os.path.isfile(karpathy_json_path):
         preprocess_coco_ann(train_caption_ann, val_caption_ann, karpathy_json_path)
 
-    if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
+    if not os.path.isdir(path_params.preprocessed_dir):
+        os.mkdir(path_params.preprocessed_dir)
 
     if True:
         create_input_files(karpathy_json_path=karpathy_json_path,
-                           image_folder=base_path,
-                           captions_per_image=params.captions_per_image,
-                           output_folder=output_dir,
-                           max_len=params.max_text_seq_len,
+                           image_folder=path_params.coco_path,
+                           captions_per_image=data_params.captions_per_image,
+                           output_folder=path_params.preprocessed_dir,
+                           max_len=data_params.max_text_seq_len,
                            data_name=data_name,
                            )
 
-    train_data = CaptionDataset(output_dir, "TRAIN")
-    val_data = CaptionDataset(output_dir, "VAL")
+    train_data = CaptionDataset(path_params.preprocessed_dir, "TRAIN")
+    val_data = CaptionDataset(path_params.preprocessed_dir, "VAL")
 
     t = train_data.__getitem__(3)
     v = val_data.__getitem__(1)

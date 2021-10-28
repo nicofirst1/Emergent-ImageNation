@@ -102,7 +102,7 @@ class DebugParams(Params):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     cudnn.benchmark = True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
     workers = 1  # for data-loading; right now, only 1 works with h5py
-    batch_size = 32
+    batch_size = 4
     pin_memory = True
 
     def __init__(self):
@@ -141,9 +141,13 @@ class SenderParams(Params):
 
 
 class PathParams(Params):
-    base_path = "/home/dizzi/Desktop/coco/"
+    working_dir = os.getcwd().split("src")[0]
 
-    preprocessed_dir =  "./preprocessed"
+    preprocessed_dir=os.path.join(working_dir,"preprocessed")
+
+
+    coco_path = "/home/dizzi/Desktop/coco/"
+
 
     wandb_dir = "./wandb_metadata"
 
@@ -155,4 +159,5 @@ class DataParams(Params):
     min_word_freq = 5
     max_text_seq_len = 64
 
-    generate_data_url=True
+    # when true use url in the datset and load them during training, less memory but more time
+    generate_data_url = False
