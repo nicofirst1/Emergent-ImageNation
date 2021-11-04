@@ -70,11 +70,18 @@ class CaptionDataset(Dataset):
         random.seed(seed)
 
     def __getitem__(self, i):
-
+        
         img = self.imgs[i]
+
         if isinstance(img, str):
-            img = imread(img)
-            img=img_processing(img)
+            
+            try:
+                img = imread(img)
+            except:
+                i = i - 1 if i> 0 else i + 1 
+                return self.__getitem__(i)
+            
+            img = img_processing(img)
 
         img = torch.FloatTensor(img / 255.)
         if self.transform is not None:
@@ -99,7 +106,7 @@ class CaptionDataset(Dataset):
             all_captions = torch.LongTensor(
                 self.captions[i])
             return img, caption, caplen, all_captions
-
+        
     def __len__(self):
         return self.dataset_size
 
@@ -313,7 +320,6 @@ def preprocess_coco_ann(train_caption_ann, val_caption_ann, output_file):
 if __name__ == '__main__':
 
     # change base_path depending where you have coco
-
     data_params = DataParams()
     path_params = PathParams()
 
@@ -322,7 +328,6 @@ if __name__ == '__main__':
     train_caption_ann = os.path.join(ann_path, "captions_train2017.json")
     val_caption_ann = os.path.join(ann_path, "captions_val2017.json")
     karpathy_json_path = os.path.join(ann_path, "coco_raw.json")
-
     data_name = f"{data_params.captions_per_image}_cap_per_img"
 
     if not os.path.isfile(karpathy_json_path):
@@ -330,7 +335,6 @@ if __name__ == '__main__':
 
     if not os.path.isdir(path_params.preprocessed_dir):
         os.mkdir(path_params.preprocessed_dir)
-
     if True:
         create_input_files(karpathy_json_path=karpathy_json_path,
                            image_folder=path_params.coco_path,
