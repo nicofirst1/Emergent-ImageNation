@@ -2,13 +2,13 @@
 
 To install use the setup file as follows:
 ```
-pyton setup.py install
+python setup.py install
 ```
 
 If you wish to play around with the repo and change some code use the `-e` option as follows:
 
 ```
-pyton setup.py install -e
+python setup.py install -e
 
 ```
 
