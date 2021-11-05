@@ -8,7 +8,7 @@ python setup.py install
 If you wish to play around with the repo and change some code use the `-e` option as follows:
 
 ```
-python setup.py install -e
+python setup.py develop
 
 ```
 
