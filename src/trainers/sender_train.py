@@ -1,7 +1,7 @@
 import torch
 from egg import core
 from egg.core import LoggingStrategy, CheckpointSaver, ProgressBarLogger
-from torch.optim import Adam
+from torch.optim import Adam, lr_scheduler, AdamW
 
 from src.Parameters import SenderParams, PathParams, DebugParams
 from src.arhcs.sender import get_sender, get_sender_params
@@ -33,7 +33,7 @@ class SenderTrain(torch.nn.Module):
         )
 
     def forward(self, images, text, mask, something):
-        loss = self.dalle(text, images, mask=mask, return_loss=True)
+        loss = self.dalle(text, image=images, mask=mask, return_loss=True)
 
         logging_strategy = (
             self.train_logging_strategy if self.training else self.test_logging_strategy
@@ -61,29 +61,36 @@ if __name__ == '__main__':
     model_config = get_sender_params()
 
     # get dataloader
-    train_data, val_data = get_dataloaders()
+    train_dl, val_dl = get_dataloaders()
 
     # initialize dalle and game
     dalle = get_sender(model_config)
     sender_train = SenderTrain(dalle)
 
     # optimizer
-    opt = Adam(dalle.parameters(), lr=st_params.lr)
+    opt = AdamW(dalle.parameters(), lr=st_params.lr)
+
+    optimizer_scheduler = lr_scheduler.OneCycleLR(opt, max_lr=5e-3, epochs=st_params.epochs,
+                                                  steps_per_epoch=len(
+                                                      train_dl))
 
     # init callbacks
 
     checkpoint_logger = CheckpointSaver(checkpoint_path=st_params.checkpoint, max_checkpoints=3)
 
-    progressbar = ProgressBarLogger(n_epochs=st_params.epochs, train_data_len=len(train_data),
-                                    test_data_len=len(val_data), use_info_table=False)
+    progressbar = ProgressBarLogger(n_epochs=st_params.epochs, train_data_len=len(train_dl),
+                                    test_data_len=len(val_dl), use_info_table=False)
 
     callbacks = [
         checkpoint_logger,
-        progressbar
+        #progressbar
     ]
 
     if not deb_params.debug:
-        wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=dalle,
+        log_step = int(len(train_dl) * 0.01)
+        image_log_step = log_step * 10
+
+        wandb_logger = CustomWandbLogger(log_step=log_step, image_log_step=image_log_step, dalle=dalle,
                                          project='sender_train', model_config=model_config,
                                          dir=pt_params.wandb_dir, opts={}, log_type='sender')
         callbacks.append(wandb_logger)
@@ -92,11 +99,12 @@ if __name__ == '__main__':
     trainer = core.Trainer(
         game=sender_train,
         optimizer=opt,
-        train_data=train_data,
-        validation_data=val_data,
+        train_data=train_dl,
+        validation_data=val_dl,
         device=deb_params.device,
         grad_norm=True,
-        callbacks=callbacks
+        callbacks=callbacks,
+        optimizer_scheduler=optimizer_scheduler,
 
     )
 

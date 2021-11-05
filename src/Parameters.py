@@ -100,8 +100,8 @@ class DebugParams(Params):
     """
     debug = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    cudnn.benchmark = True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
-    workers = 1  # for data-loading; right now, only 1 works with h5py
+    workers = 4  # for data-loading; right now, only 1 works with h5py
+    batch_size = 8
     batch_size = 4
     pin_memory = True
 
@@ -114,6 +114,11 @@ class DebugParams(Params):
             self.workers = 0
             self.batch_size = 2
             self.pin_memory = False
+        else:
+            torch.autograd.set_detect_anomaly(False)
+            torch.autograd.profiler.profile(False)
+            torch.autograd.profiler.emit_nvtx(False)
+            torch.backends.cudnn.benchmark = True
 
 
 class SenderParams(Params):
@@ -138,6 +143,7 @@ class SenderParams(Params):
     reversible = True
 
     checkpoint = "./checkpoint_sender.pth.tar"  # path to checkpoint, None if none
+    use_image=True
 
 
 class PathParams(Params):
