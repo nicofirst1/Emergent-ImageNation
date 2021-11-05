@@ -90,10 +90,19 @@ class CustomWandbLogger(WandbLogger):
     def on_batch_end(
             self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
     ):
-        if batch_id % self.log_step != 0:
-            return
 
         flag = "training" if is_training else "validation"
+
+        log_step = self.log_step
+        image_log_step = self.image_log_step
+
+        if flag=="validation":
+            log_step//=10
+            image_log_step//=10
+
+        if batch_id % log_step != 0:
+            return
+
 
         wandb_log = {
             f"{flag}_loss": loss,
@@ -106,7 +115,7 @@ class CustomWandbLogger(WandbLogger):
             wandb_log[f"{flag}_top5"] = top5
 
         # image logging
-        if batch_id % self.image_log_step == 0:
+        if batch_id % image_log_step == 0:
             if self.log_type == 'sender':
                 img_log = self.sender_image_log(flag, logs)
             elif self.log_type == 'receiver':
@@ -128,6 +137,8 @@ class CustomWandbLogger(WandbLogger):
         # todo: add    bleu4 = corpus_bleu(references, hypotheses)
 
 
+
+
 def accuracy(scores, targets, k):
     """
     Computes top-k accuracy, from predicted and true labels.
@@ -147,7 +158,7 @@ def accuracy(scores, targets, k):
 from sentence_transformers import SentenceTransformer, util
 
 
-def SBERT_loss():
+def SBERT_loss(device):
     # fixme: put on specific device
     def inner(true_description, receiver_output):
         """
@@ -175,7 +186,7 @@ def SBERT_loss():
         emb2 = emb2['sentence_embedding']
 
         loss = -util.cos_sim(emb1, emb2)
-        loss = torch.sum(loss, dim=0).mean()
+        loss = loss.mean().to(device)
 
         return loss
 

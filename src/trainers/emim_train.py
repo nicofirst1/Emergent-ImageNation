@@ -3,7 +3,7 @@ import torch.utils.data
 from egg import core
 from egg.core import LoggingStrategy, ProgressBarLogger, CheckpointSaver
 from torch.nn.utils.rnn import pack_padded_sequence
-from torch.profiler import profile, record_function, ProfilerActivity
+from torch.optim import lr_scheduler
 from torchvision.transforms import transforms
 
 from src.Parameters import PathParams, ReceiverParams, DataParams, SenderParams, DebugParams
@@ -20,13 +20,14 @@ class EmImTrain(torch.nn.Module):
     Simply gets the data (images, text, mask), gets it to dalle and return loss and interactions
     """
 
-    def __init__(self, encoder, decoder, sender,
+    def __init__(self, encoder, decoder, sender, device,
                  train_logging_strategy: LoggingStrategy = None,
                  test_logging_strategy: LoggingStrategy = None, ):
         super(EmImTrain, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.sender = sender
+        self.device = device
 
         self.train_logging_strategy = (
             LoggingStrategy()
@@ -39,12 +40,11 @@ class EmImTrain(torch.nn.Module):
             else test_logging_strategy
         )
 
-        self.loss_function = SBERT_loss()
+        self.loss_function = SBERT_loss(self.device)
         self.transform = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                               std=[0.229, 0.224, 0.225])
 
     def forward(self, images, text, mask, something):
-
         # get image from sender
         sender_images = self.sender.generate_images_trainmode(text, mask=mask)
 
@@ -67,7 +67,14 @@ class EmImTrain(torch.nn.Module):
 
         # estimate loss
         loss = self.loss_function(text, preds)
+        loss = loss
 
+        preds_log = preds[0]
+
+        sender_img, text, mask, preds_log, scores, targets = map(lambda c: c.detach().to("cpu"), [sender_img, text,
+                                                                                                  mask, preds_log,
+                                                                                                  scores,
+                                                                                                  targets])
 
         logging_strategy = (
             self.train_logging_strategy if self.training else self.test_logging_strategy
@@ -79,15 +86,13 @@ class EmImTrain(torch.nn.Module):
             receiver_input=None,
             aux_input=None,
             message=None,
-            receiver_output=preds[0],
+            receiver_output=preds_log,
             aux=dict(
                 scores=scores,
                 sender_img=sender_img,
                 targets=targets,
             ),
         )
-
-        torch.cuda.empty_cache()
 
         return loss, interaction
 
@@ -104,6 +109,10 @@ if __name__ == '__main__':
     data_params = DataParams()
     pt_params = PathParams()
     deb_params = DebugParams()
+
+    # Custom dataloaders
+
+    train_dl, val_dl = get_dataloaders()
 
     #################
     #   SENDER
@@ -138,11 +147,12 @@ if __name__ == '__main__':
     if rt_params.fine_tune_encoder:
         opt_list.append(enc_opt)
 
-    joint_optim = torch.optim.Adam(opt_list)
+    joint_optim = torch.optim.AdamW(opt_list)
 
-    # Custom dataloaders
+    optimizer_scheduler = lr_scheduler.OneCycleLR(joint_optim, max_lr=5e-3, epochs=rt_params.epochs, steps_per_epoch=len(
+        train_dl))
 
-    train_dl, val_dl = get_dataloaders()
+
 
     #################
     #   CALLBACKS
@@ -159,14 +169,18 @@ if __name__ == '__main__':
     ]
 
     if not deb_params.debug and True:
-        wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=sender,
+        log_step=int(len(train_dl)*0.01)
+        image_log_step=log_step*10
+
+
+        wandb_logger = CustomWandbLogger(log_step=log_step, image_log_step=image_log_step, dalle=sender,
                                          project='emim_train', model_config={},
                                          dir=pt_params.wandb_dir, opts={}, log_type="emim")
         callbacks.append(wandb_logger)
 
     # training
 
-    setting = EmImTrain(encoder, decoder, sender)
+    setting = EmImTrain(encoder, decoder, sender, deb_params.device)
 
     trainer = core.Trainer(
         game=setting,
@@ -175,7 +189,8 @@ if __name__ == '__main__':
         validation_data=val_dl,
         device=deb_params.device,
         grad_norm=rt_params.grad_clip,
-        callbacks=callbacks
+        callbacks=callbacks,
+        optimizer_scheduler=optimizer_scheduler,
 
     )
 
