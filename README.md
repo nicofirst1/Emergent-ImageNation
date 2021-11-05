@@ -1,5 +1,21 @@
 # EmergentImagination
 
+To install use the setup file as follows:
+```
+pyton setup.py install
+```
+
+If you wish to play around with the repo and change some code use the `-e` option as follows:
+
+```
+pyton setup.py install -e
+
+```
+
+## Repo structure
+
+
+
 ## Dataset 
 Tutorial taken from [here](https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning)
 
