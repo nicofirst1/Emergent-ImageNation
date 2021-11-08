@@ -2,7 +2,7 @@ import torch
 import torchvision
 from torch import nn
 
-from src.Parameters import ReceiverParams, DataParams, DebugParams
+from src.Parameters import ReceiverParams, DataParams, DebugParams, PathParams
 
 
 class Encoder(nn.Module):
@@ -14,7 +14,7 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.enc_image_size = encoded_image_size
 
-        resnet = torchvision.models.resnet18(pretrained=True)  # pretrained ImageNet ResNet-101
+        resnet = torchvision.models.resnet101(pretrained=True)  # pretrained ImageNet ResNet-101
 
         # Remove linear and pool layers (since we're not doing classification)
         modules = list(resnet.children())[:-2]
@@ -218,14 +218,28 @@ def get_recevier():
     data_params = DataParams()
     deb_params = DebugParams()
 
+    encoder = Encoder()
+    encoder.fine_tune(rec_params.fine_tune_encoder)
+
+    vocab_size = data_params.vocab_size
+    encoder_dim = encoder.resnet[-1][-1].conv1.out_channels
+
+    if rec_params.load_checkpoint:
+        # use values the decoder was trained with
+        vocab_size = 9490
+        encoder_dim = 2048
+
     decoder = DecoderWithAttention(attention_dim=rec_params.attention_dim,
                                    embed_dim=rec_params.emb_dim,
                                    decoder_dim=rec_params.decoder_dim,
-                                   vocab_size=data_params.vocab_size,
+                                   vocab_size=vocab_size,
                                    dropout=rec_params.dropout,
-                                   device=deb_params.device)
-    encoder = Encoder()
-    encoder.fine_tune(rec_params.fine_tune_encoder)
+                                   device=deb_params.device,
+                                   encoder_dim=encoder_dim)
+
+    if rec_params.load_checkpoint is not None:
+        checkpoint = torch.load(PathParams.receiver_decoder_model_path)
+        decoder.load_state_dict(checkpoint)
 
     decoder = decoder.to(deb_params.device)
     encoder = encoder.to(deb_params.device)

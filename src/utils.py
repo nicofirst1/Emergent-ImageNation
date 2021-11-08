@@ -81,10 +81,10 @@ class CustomWandbLogger(WandbLogger):
         original_image = logs.sender_input
 
         pred_caption = tokenizer.decode(logs.receiver_output)
-        pred_image = logs.aux['sender_img']
+        #pred_image = logs.aux['sender_img']
 
         return {f'{flag}_original': wandb.Image(original_image, caption=original_caption),
-                f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
+                #f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
                 }
 
     def on_batch_end(
@@ -158,7 +158,7 @@ def accuracy(scores, targets, k):
 from sentence_transformers import SentenceTransformer, util
 
 
-def SBERT_loss(device):
+def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
     # fixme: put on specific device
     def inner(true_description, receiver_output):
         """
@@ -176,8 +176,8 @@ def SBERT_loss(device):
 
             return out_features
 
-        true_description = [tokenizer.decode(elem) for elem in true_description]
-        receiver_output = [tokenizer.decode(elem) for elem in receiver_output]
+        true_description = [text_decoder.decode(elem) for elem in true_description]
+        receiver_output = [output_decoder.decode(elem) for elem in receiver_output]
 
         emb1 = encode(receiver_output)
         emb2 = encode(true_description)

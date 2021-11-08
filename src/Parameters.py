@@ -76,9 +76,9 @@ class ReceiverParams(Params):
     data_name = "receiver"
 
     # Model parameters
-    emb_dim = 32  # dimension of word embeddings
-    attention_dim = 32  # dimension of attention linear layers
-    decoder_dim = 32  # dimension of decoder RNN
+    emb_dim = 512  # dimension of word embeddings
+    attention_dim = 512  # dimension of attention linear layers
+    decoder_dim = 512  # dimension of decoder RNN
     dropout = 0.5
 
     # Training parameters
@@ -92,17 +92,18 @@ class ReceiverParams(Params):
     fine_tune_encoder = False  # fine-tune encoder?
     checkpoint = "./checkpoint_receiver.pth.tar"  # path to checkpoint, None if none
 
+    load_checkpoint=True
+
 
 class DebugParams(Params):
     """
     Parameters relative to the debugging phase.
     Irrelevant if debug=False
     """
-    debug = False
+    debug = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     workers = 4  # for data-loading; right now, only 1 works with h5py
     batch_size = 8
-    batch_size = 4
     pin_memory = True
 
     def __init__(self):
@@ -136,7 +137,7 @@ class SenderParams(Params):
     anneal_rate = 1e-6
 
     ### DALLE model params
-    model_dim = 128
+    model_dim = 512 # for the emim train be sure to match resnet's output dim
     depth = 2
     heads = 4
     dim_head = 64
@@ -149,13 +150,16 @@ class SenderParams(Params):
 class PathParams(Params):
     working_dir = os.getcwd().split("src")[0]
 
-    preprocessed_dir=os.path.join(working_dir,"preprocessed")
+    preprocessed_dir = os.path.join(working_dir, "preprocessed")
 
 
     coco_path = "/home/dizzi/Desktop/coco/"
 
 
     wandb_dir = "./wandb_metadata"
+
+    receiver_decoder_model_path = os.path.join(preprocessed_dir, "receiver_decoder_check.tar")
+    receiver_wordmap_path = os.path.join(preprocessed_dir, "WORDMAP_coco_5_cap_per_img_5_min_word_freq.json")
 
 
 class DataParams(Params):

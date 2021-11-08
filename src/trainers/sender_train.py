@@ -4,7 +4,7 @@ from egg.core import LoggingStrategy, CheckpointSaver, ProgressBarLogger
 from torch.optim import Adam, lr_scheduler, AdamW
 
 from src.Parameters import SenderParams, PathParams, DebugParams
-from src.arhcs.sender import get_sender, get_sender_params
+from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
 from src.utils import CustomWandbLogger
 

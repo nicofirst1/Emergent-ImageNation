@@ -1,3 +1,5 @@
+import json
+
 import torch.optim
 import torch.utils.data
 from egg import core
@@ -7,9 +9,9 @@ from torch.optim import lr_scheduler
 from torchvision.transforms import transforms
 
 from src.Parameters import PathParams, ReceiverParams, DataParams, SenderParams, DebugParams
-from src.arhcs.receiver import get_recevier
+from src.archs.receiver import get_recevier
 # Data parameters
-from src.arhcs.sender import get_sender, get_sender_params
+from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
 from src.utils import CustomWandbLogger, SBERT_loss
 
@@ -40,9 +42,17 @@ class EmImTrain(torch.nn.Module):
             else test_logging_strategy
         )
 
-        self.loss_function = SBERT_loss(self.device)
+        if ReceiverParams.load_checkpoint:
+            # Load word map (word2ix)
+            with open(PathParams.receiver_wordmap_path, 'r') as j:
+                word_map = json.load(j)
+            rev_word_map = {v: k for k, v in word_map.items()}  # ix2word
+
+
+        self.loss_function = SBERT_loss(self.device, output_decoder=rev_word_map)
         self.transform = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                               std=[0.229, 0.224, 0.225])
+
 
     def forward(self, images, text, mask, something):
         # get tokens from transformer inside sender
@@ -92,10 +102,10 @@ class EmImTrain(torch.nn.Module):
             receiver_output=preds_log,
             aux=dict(
                 scores=scores,
-               # sender_img=sender_img,
                 targets=targets,
             ),
         )
+
 
         return loss, interaction
 

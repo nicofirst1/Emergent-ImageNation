@@ -7,7 +7,7 @@ from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
 
 from src.Parameters import PathParams, ReceiverParams, DataParams, DebugParams
-from src.arhcs.receiver import get_recevier
+from src.archs.receiver import get_recevier
 # Data parameters
 from src.dataset import get_dataloaders
 from src.utils import CustomWandbLogger
