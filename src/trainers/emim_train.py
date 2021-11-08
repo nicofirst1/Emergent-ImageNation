@@ -45,17 +45,22 @@ class EmImTrain(torch.nn.Module):
                                               std=[0.229, 0.224, 0.225])
 
     def forward(self, images, text, mask, something):
-        # get image from sender
-        sender_images = self.sender.generate_images_trainmode(text, mask=mask)
+        # get tokens from transformer inside sender
+        # [batch size, -1, model dim]
+        # remember that [:,:,text_seq_len:] (first text_seq_len on dim 3 ) are relative to text, while others to img
+        sender_tokens = self.sender(text, mask=mask, image=images, return_tokens=True)
 
-        # save for log
-        sender_img = sender_images[0]
+
         # normalize and sub std
-        sender_images = self.transform(sender_images)
+        images = self.transform(images)
 
         # call receiver with generated image
-        imgs = encoder(sender_images)
-        scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, text, mask)
+        encoded_img = encoder(images)
+
+        # concat together sender embedding and encoder ones.
+        # remember that sender model dim must be equal to resnet output dim for concat
+        receiver_input=torch.cat((encoded_img,sender_tokens), dim=1)
+        scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(receiver_input, text, mask)
 
         # for logging
         img = images[0]
@@ -67,12 +72,10 @@ class EmImTrain(torch.nn.Module):
 
         # estimate loss
         loss = self.loss_function(text, preds)
-        loss = loss
 
         preds_log = preds[0]
 
-        sender_img, text, mask, preds_log, scores, targets = map(lambda c: c.detach().to("cpu"), [sender_img, text,
-                                                                                                  mask, preds_log,
+        text, mask, preds_log, scores, targets = map(lambda c: c.detach().to("cpu"), [ text, mask, preds_log,
                                                                                                   scores,
                                                                                                   targets])
 
@@ -89,7 +92,7 @@ class EmImTrain(torch.nn.Module):
             receiver_output=preds_log,
             aux=dict(
                 scores=scores,
-                sender_img=sender_img,
+               # sender_img=sender_img,
                 targets=targets,
             ),
         )
