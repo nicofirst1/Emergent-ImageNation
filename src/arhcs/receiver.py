@@ -35,6 +35,12 @@ class Encoder(nn.Module):
         out = self.resnet(images)  # (batch_size, 2048, image_size/32, image_size/32)
         out = self.adaptive_pool(out)  # (batch_size, 2048, encoded_image_size, encoded_image_size)
         out = out.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
+
+        encoder_dim = out.size(-1)
+        batch_size = out.size(0)
+
+        out = out.view(batch_size, -1, encoder_dim)  # (batch_size, num_pixels, encoder_dim)
+
         return out
 
     def fine_tune(self, fine_tune=True):
@@ -164,11 +170,9 @@ class DecoderWithAttention(nn.Module):
         """
 
         batch_size = encoder_out.size(0)
-        encoder_dim = encoder_out.size(-1)
         vocab_size = self.vocab_size
 
         # Flatten image
-        encoder_out = encoder_out.view(batch_size, -1, encoder_dim)  # (batch_size, num_pixels, encoder_dim)
         num_pixels = encoder_out.size(1)
 
         # Sort input data by decreasing lengths; why? apparent below

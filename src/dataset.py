@@ -327,7 +327,7 @@ if __name__ == '__main__':
     ann_path = os.path.join(path_params.coco_path, "annotations")
     train_caption_ann = os.path.join(ann_path, "captions_train2017.json")
     val_caption_ann = os.path.join(ann_path, "captions_val2017.json")
-    karpathy_json_path = os.path.join(ann_path, "coco_raw.json")
+    karpathy_json_path = os.path.join(path_params.preprocessed_dir, "coco_raw.json")
     data_name = f"{data_params.captions_per_image}_cap_per_img"
 
     if not os.path.isfile(karpathy_json_path):
@@ -349,3 +349,5 @@ if __name__ == '__main__':
 
     t = train_data.__getitem__(3)
     v = val_data.__getitem__(1)
+
+    print("Done")

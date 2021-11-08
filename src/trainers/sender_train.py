@@ -83,7 +83,7 @@ if __name__ == '__main__':
 
     callbacks = [
         checkpoint_logger,
-        #progressbar
+        progressbar
     ]
 
     if not deb_params.debug:
