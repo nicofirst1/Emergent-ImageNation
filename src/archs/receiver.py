@@ -1,8 +1,10 @@
 import torch
 import torchvision
+from dalle_pytorch.tokenizer import tokenizer
 from torch import nn
 
 from src.Parameters import ReceiverParams, DataParams, DebugParams, PathParams
+from src.utils import build_translation_vocabulary
 
 
 class Encoder(nn.Module):
@@ -95,7 +97,7 @@ class DecoderWithAttention(nn.Module):
     Decoder.
     """
 
-    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, device, encoder_dim=512, dropout=0.5):
+    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, device, encoder_dim=512, dropout=0.5, ):
         """
         :param attention_dim: size of attention network
         :param embed_dim: embedding size
@@ -115,6 +117,7 @@ class DecoderWithAttention(nn.Module):
         self.device = device
 
         self.attention = Attention(encoder_dim, decoder_dim, attention_dim)  # attention network
+        self.text_converter=None
 
         self.embedding = nn.Embedding(vocab_size, embed_dim)  # embedding layer
         self.dropout = nn.Dropout(p=self.dropout)
@@ -180,6 +183,21 @@ class DecoderWithAttention(nn.Module):
         encoder_out = encoder_out[sort_ind]
         encoded_captions = encoded_captions[sort_ind]
 
+
+        if self.text_converter is not None:
+            encoding_len = encoded_captions.shape[1]
+            # translate back to english
+            translated_caption= [tokenizer.decode(elem) for elem in encoded_captions]
+            # remove last word
+            translated_caption= [elem.split()[:-1] for elem in translated_caption]
+            # convert to other vocab
+            encoded_captions= [[self.text_converter.get(elem, self.text_converter["<unk>"]) for elem in x] for x in
+                               translated_caption]
+            #pad
+            encoded_captions= [x + [self.text_converter["<pad>"]] * (encoding_len - len(x)) for x in encoded_captions]
+            # move back to device
+            encoded_captions=torch.as_tensor(encoded_captions).to(self.device)
+
         # Embedding
         embeddings = self.embedding(encoded_captions)  # (batch_size, max_caption_length, embed_dim)
 
@@ -240,6 +258,9 @@ def get_recevier():
     if rec_params.load_checkpoint is not None:
         checkpoint = torch.load(PathParams.receiver_decoder_model_path)
         decoder.load_state_dict(checkpoint)
+
+        d2c, c2d = build_translation_vocabulary()
+        decoder.text_converter = d2c
 
     decoder = decoder.to(deb_params.device)
     encoder = encoder.to(deb_params.device)

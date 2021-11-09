@@ -137,7 +137,7 @@ class SenderParams(Params):
     anneal_rate = 1e-6
 
     ### DALLE model params
-    model_dim = 512 # for the emim train be sure to match resnet's output dim
+    model_dim = 2048 # for the emim train be sure to match resnet's output dim
     depth = 2
     heads = 4
     dim_head = 64

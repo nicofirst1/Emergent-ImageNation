@@ -1,10 +1,12 @@
+import json
 import os
 
-import torch
 import wandb
 from dalle_pytorch.tokenizer import tokenizer
 from egg.core import Interaction
 from egg.core.callbacks import WandbLogger
+
+from src.Parameters import PathParams
 
 
 class CustomWandbLogger(WandbLogger):
@@ -81,10 +83,10 @@ class CustomWandbLogger(WandbLogger):
         original_image = logs.sender_input
 
         pred_caption = tokenizer.decode(logs.receiver_output)
-        #pred_image = logs.aux['sender_img']
+        # pred_image = logs.aux['sender_img']
 
         return {f'{flag}_original': wandb.Image(original_image, caption=original_caption),
-                #f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
+                # f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
                 }
 
     def on_batch_end(
@@ -96,13 +98,12 @@ class CustomWandbLogger(WandbLogger):
         log_step = self.log_step
         image_log_step = self.image_log_step
 
-        if flag=="validation":
-            log_step//=10
-            image_log_step//=10
+        if flag == "validation":
+            log_step //= 10
+            image_log_step //= 10
 
         if batch_id % log_step != 0:
             return
-
 
         wandb_log = {
             f"{flag}_loss": loss,
@@ -137,6 +138,12 @@ class CustomWandbLogger(WandbLogger):
         # todo: add    bleu4 = corpus_bleu(references, hypotheses)
 
 
+def build_translation_vocabulary():
+    with open(PathParams.receiver_wordmap_path, 'r') as j:
+        word_map = json.load(j)
+
+    rev_word_map = {v: k for k, v in word_map.items()}
+    return word_map, rev_word_map
 
 
 def accuracy(scores, targets, k):
@@ -177,7 +184,14 @@ def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
             return out_features
 
         true_description = [text_decoder.decode(elem) for elem in true_description]
-        receiver_output = [output_decoder.decode(elem) for elem in receiver_output]
+
+        if isinstance(output_decoder, dict):
+            receiver_output = [[output_decoder[int(elem)] for elem in x] for x in receiver_output]
+            receiver_output=[" ".join(x) for x in receiver_output]
+
+        else:
+
+            receiver_output = [output_decoder.decode(elem) for elem in receiver_output]
 
         emb1 = encode(receiver_output)
         emb2 = encode(true_description)
@@ -192,3 +206,7 @@ def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
 
     model = SentenceTransformer('all-MiniLM-L6-v2')
     return inner
+
+
+if __name__ == '__main__':
+    build_translation_vocabulary()
