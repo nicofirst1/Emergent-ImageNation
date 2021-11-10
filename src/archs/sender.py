@@ -8,7 +8,7 @@ def get_sender_params():
     dt= DataParams()
 
     return dict(
-        num_text_tokens=dt.vocab_size,
+        num_text_tokens=dt.vocab_size_in,
         text_seq_len=dt.max_text_seq_len,
         dim=params.model_dim,
         depth=params.depth,

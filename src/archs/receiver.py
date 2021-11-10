@@ -97,12 +97,12 @@ class DecoderWithAttention(nn.Module):
     Decoder.
     """
 
-    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size, device, encoder_dim=512, dropout=0.5, ):
+    def __init__(self, attention_dim, embed_dim, decoder_dim, vocab_size_in, vocab_size_out, device, encoder_dim=512, dropout=0.5, ):
         """
         :param attention_dim: size of attention network
         :param embed_dim: embedding size
         :param decoder_dim: size of decoder's RNN
-        :param vocab_size: size of vocabulary
+        :param vocab_size_in: size of vocabulary input, the vocab with which the embedding was trained
         :param encoder_dim: feature size of encoded images
         :param dropout: dropout
         """
@@ -112,21 +112,22 @@ class DecoderWithAttention(nn.Module):
         self.attention_dim = attention_dim
         self.embed_dim = embed_dim
         self.decoder_dim = decoder_dim
-        self.vocab_size = vocab_size
+        self.vocab_size_in = vocab_size_in
+        self.vocab_size_out = vocab_size_out
         self.dropout = dropout
         self.device = device
 
         self.attention = Attention(encoder_dim, decoder_dim, attention_dim)  # attention network
         self.text_converter=None
 
-        self.embedding = nn.Embedding(vocab_size, embed_dim)  # embedding layer
+        self.embedding = nn.Embedding(vocab_size_in, embed_dim)  # embedding layer
         self.dropout = nn.Dropout(p=self.dropout)
         self.decode_step = nn.LSTMCell(embed_dim + encoder_dim, decoder_dim, bias=True)  # decoding LSTMCell
         self.init_h = nn.Linear(encoder_dim, decoder_dim)  # linear layer to find initial hidden state of LSTMCell
         self.init_c = nn.Linear(encoder_dim, decoder_dim)  # linear layer to find initial cell state of LSTMCell
         self.f_beta = nn.Linear(decoder_dim, encoder_dim)  # linear layer to create a sigmoid-activated gate
         self.sigmoid = nn.Sigmoid()
-        self.fc = nn.Linear(decoder_dim, vocab_size)  # linear layer to find scores over vocabulary
+        self.fc = nn.Linear(decoder_dim, vocab_size_out)  # linear layer to find scores over vocabulary
         self.init_weights()  # initialize some layers with the uniform distribution
 
     def init_weights(self):
@@ -136,6 +137,25 @@ class DecoderWithAttention(nn.Module):
         self.embedding.weight.data.uniform_(-0.1, 0.1)
         self.fc.bias.data.fill_(0)
         self.fc.weight.data.uniform_(-0.1, 0.1)
+
+    def on_load_checkpoint(self, checkpoint: dict) -> None:
+        state_dict = checkpoint
+        model_state_dict = self.state_dict()
+        is_changed = False
+        for k in state_dict:
+            if k in model_state_dict:
+                if state_dict[k].shape != model_state_dict[k].shape:
+                    print(f"Skip loading parameter: {k}, "
+                                f"required shape: {model_state_dict[k].shape}, "
+                                f"loaded shape: {state_dict[k].shape}")
+                    state_dict[k] = model_state_dict[k]
+                    is_changed = True
+            else:
+                print(f"Dropping parameter {k}")
+                is_changed = True
+
+        if is_changed:
+            checkpoint.pop("optimizer_states", None)
 
     def load_pretrained_embeddings(self, embeddings):
         """
@@ -173,7 +193,7 @@ class DecoderWithAttention(nn.Module):
         """
 
         batch_size = encoder_out.size(0)
-        vocab_size = self.vocab_size
+        vocab_size = self.vocab_size_out
 
         # Flatten image
         num_pixels = encoder_out.size(1)
@@ -209,7 +229,7 @@ class DecoderWithAttention(nn.Module):
         decode_lengths = (caption_lengths - 1).tolist()
 
         # Create tensors to hold word predicion scores and alphas
-        predictions = torch.zeros(batch_size, max(decode_lengths), vocab_size).to(self.device)
+        predictions = torch.zeros(batch_size, max(decode_lengths), vocab_size ).to(self.device)
         alphas = torch.zeros(batch_size, max(decode_lengths), num_pixels).to(self.device)
 
         # At each time-step, decode by
@@ -239,25 +259,27 @@ def get_recevier():
     encoder = Encoder()
     encoder.fine_tune(rec_params.fine_tune_encoder)
 
-    vocab_size = data_params.vocab_size
-    encoder_dim = encoder.resnet[-1][-1].conv1.out_channels
+    vocab_size_in = data_params.vocab_size_in
+    vocab_size_out= vocab_size_in
+    encoder_dim = encoder.resnet[-1][-1].conv3.out_channels
 
     if rec_params.load_checkpoint:
         # use values the decoder was trained with
-        vocab_size = 9490
+        vocab_size_in = 9490
         encoder_dim = 2048
 
     decoder = DecoderWithAttention(attention_dim=rec_params.attention_dim,
                                    embed_dim=rec_params.emb_dim,
                                    decoder_dim=rec_params.decoder_dim,
-                                   vocab_size=vocab_size,
+                                   vocab_size_in=vocab_size_in,
+                                   vocab_size_out=vocab_size_out,
                                    dropout=rec_params.dropout,
                                    device=deb_params.device,
                                    encoder_dim=encoder_dim)
 
-    if rec_params.load_checkpoint is not None:
+    if rec_params.load_checkpoint :
         checkpoint = torch.load(PathParams.receiver_decoder_model_path)
-        decoder.load_state_dict(checkpoint)
+        decoder.on_load_checkpoint(checkpoint)
 
         d2c, c2d = build_translation_vocabulary()
         decoder.text_converter = d2c

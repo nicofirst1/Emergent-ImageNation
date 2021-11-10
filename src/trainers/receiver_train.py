@@ -10,7 +10,7 @@ from src.Parameters import PathParams, ReceiverParams, DataParams, DebugParams
 from src.archs.receiver import get_recevier
 # Data parameters
 from src.dataset import get_dataloaders
-from src.utils import CustomWandbLogger, build_translation_vocabulary, dictionary_decode
+from src.utils import CustomWandbLogger, build_translation_vocabulary, dictionary_decode, get_loggings, CustomLogging
 
 
 class ReceiverTrain(torch.nn.Module):
@@ -41,7 +41,7 @@ class ReceiverTrain(torch.nn.Module):
 
         self.loss_func = nn.CrossEntropyLoss().to(self.device)
 
-    def forward(self, images, text, mask, something):
+    def forward(self, images, text, mask, something, batch_id):
         # Forward prop.
         imgs = encoder(images)
         scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, text, mask)
@@ -84,6 +84,7 @@ class ReceiverTrain(torch.nn.Module):
                 scores=scores,
                 targets=targets
             ),
+            batch_id=batch_id,
         )
 
         return loss, interaction
@@ -101,7 +102,6 @@ if __name__ == '__main__':
 
     # get architecture
     decoder, encoder = get_recevier()
-    receiver_train = ReceiverTrain(encoder, decoder)
 
     # initialize optimizers
 
@@ -134,18 +134,22 @@ if __name__ == '__main__':
         progressbar
     ]
 
-    if True:
-        log_step = int(len(train_dl) * 0.01)
-        image_log_step = log_step * 10
-        wandb_logger = CustomWandbLogger(log_step=log_step, image_log_step=image_log_step, dalle=None,
+    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
+
+    if not deb_params.debug:
+
+        wandb_logger = CustomWandbLogger(train_log_step=train_step, val_log_step=val_step, dalle=None,
                                          project='receiver_train', model_config={},
                                          dir=pt_params.wandb_dir, opts={}, log_type="receiver")
 
         if rt_params.load_checkpoint:
             w2i, i2w = build_translation_vocabulary()
-            wandb_logger.receiver_decoder= dictionary_decode(i2w)
+            wandb_logger.receiver_decoder = dictionary_decode(i2w)
 
         callbacks.append(wandb_logger)
+
+    receiver_train = ReceiverTrain(encoder, decoder, train_logging_strategy=CustomLogging(train_step),
+                                   test_logging_strategy=CustomLogging(val_step))
 
     # training
 
@@ -156,7 +160,7 @@ if __name__ == '__main__':
         validation_data=val_dl,
         device=deb_params.device,
         grad_norm=rt_params.grad_clip,
-        callbacks=callbacks
+        callbacks=callbacks,
 
     )
 

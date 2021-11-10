@@ -3,15 +3,53 @@ import os
 
 import wandb
 from dalle_pytorch.tokenizer import tokenizer
-from egg.core import Interaction
+from egg.core import Interaction, LoggingStrategy
 from egg.core.callbacks import WandbLogger
 
 from src.Parameters import PathParams
 
 
+class CustomLogging(LoggingStrategy):
+
+    def __init__(self, log_step):
+        super(CustomLogging, self).__init__()
+
+        self.log_step = log_step
+
+    def filtered_interaction(
+            self,
+            sender_input,
+            receiver_input,
+            labels,
+            aux_input,
+            message,
+            receiver_output,
+            message_length,
+            aux,
+            batch_id,
+    ):
+
+        if batch_id % self.log_step== 0:
+
+            interaction = Interaction(
+                sender_input=sender_input if self.store_sender_input else None,
+                receiver_input=receiver_input if self.store_receiver_input else None,
+                labels=labels if self.store_labels else None,
+                aux_input=aux_input if self.store_aux_input else None,
+                message=message if self.store_message else None,
+                receiver_output=receiver_output if self.store_receiver_output else None,
+                message_length=message_length if self.store_message_length else None,
+                aux=aux,
+            )
+        else:
+            interaction = Interaction.empty()
+
+        return interaction
+
+
 class CustomWandbLogger(WandbLogger):
 
-    def __init__(self, log_step, image_log_step, dalle, dir, model_config, log_type, **kwargs):
+    def __init__(self, train_log_step, val_log_step, dalle, dir, model_config, log_type, **kwargs):
 
         # create wandb dir if not existing
         if not os.path.isdir(dir):
@@ -19,11 +57,11 @@ class CustomWandbLogger(WandbLogger):
 
         super(CustomWandbLogger, self).__init__(dir=dir, config=model_config, **kwargs)
 
-        self.log_step = log_step
-        self.image_log_step = image_log_step
+        self.train_log_step = train_log_step
+        self.val_log_step = val_log_step
         self.sender = dalle
         self.model_config = model_config
-        self.receiver_decoder=None
+        self.receiver_decoder = None
 
         assert log_type in ['sender', 'receiver', 'emim']
         self.log_type = log_type
@@ -65,10 +103,7 @@ class CustomWandbLogger(WandbLogger):
         :return:
         """
 
-        if self.receiver_decoder is not None:
-            preds=self.receiver_decoder(logs.receiver_output)
-        else:
-            preds = tokenizer.decode(logs.receiver_output)
+        preds = tokenizer.decode(logs.receiver_output)
         img = logs.sender_input
 
         return {f'{flag}_receiver': wandb.Image(img, caption=preds)}
@@ -86,10 +121,7 @@ class CustomWandbLogger(WandbLogger):
 
         original_image = logs.sender_input
 
-        if self.receiver_decoder is not None:
-            preds = self.receiver_decoder(logs.receiver_output)
-        else:
-            preds = tokenizer.decode(logs.receiver_output)
+        preds = tokenizer.decode(logs.receiver_output)
 
         # pred_image = logs.aux['sender_img']
 
@@ -103,12 +135,12 @@ class CustomWandbLogger(WandbLogger):
 
         flag = "training" if is_training else "validation"
 
-        log_step = self.log_step
-        image_log_step = self.image_log_step
+        log_step = self.train_log_step
 
         if flag == "validation":
-            log_step //= 10
-            image_log_step //= 10
+            log_step = self.val_log_step
+
+        image_log_step = log_step * 10
 
         if batch_id % log_step != 0:
             return
@@ -160,7 +192,9 @@ def dictionary_decode(dictionary):
         translated_caption = [dictionary.get(int(elem), 'unk') for elem in sentence]
 
         return " ".join(translated_caption)
+
     return decode
+
 
 def accuracy(scores, targets, k):
     """
@@ -179,6 +213,13 @@ def accuracy(scores, targets, k):
 
 
 from sentence_transformers import SentenceTransformer, util
+
+
+def get_loggings(train_len, val_len, perc=0.01):
+    train_step = int(train_len * perc)
+    val_step = int(val_len * perc)
+
+    return train_step, val_step
 
 
 def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
@@ -203,7 +244,7 @@ def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
 
         if isinstance(output_decoder, dict):
             receiver_output = [[output_decoder[int(elem)] for elem in x] for x in receiver_output]
-            receiver_output=[" ".join(x) for x in receiver_output]
+            receiver_output = [" ".join(x) for x in receiver_output]
 
         else:
 

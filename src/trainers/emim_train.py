@@ -13,7 +13,7 @@ from src.archs.receiver import get_recevier
 # Data parameters
 from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
-from src.utils import CustomWandbLogger, SBERT_loss
+from src.utils import CustomWandbLogger, SBERT_loss, get_loggings, CustomLogging
 
 
 class EmImTrain(torch.nn.Module):
@@ -42,19 +42,14 @@ class EmImTrain(torch.nn.Module):
             else test_logging_strategy
         )
 
-        if ReceiverParams.load_checkpoint:
-            # Load word map (word2ix)
-            with open(PathParams.receiver_wordmap_path, 'r') as j:
-                word_map = json.load(j)
-            rev_word_map = {v: k for k, v in word_map.items()}  # ix2word
 
 
-        self.loss_function = SBERT_loss(self.device, output_decoder=rev_word_map)
+        self.loss_function = SBERT_loss(self.device)
         self.transform = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                               std=[0.229, 0.224, 0.225])
 
 
-    def forward(self, images, text, mask, something):
+    def forward(self, images, text, mask, something, batch_id):
         # get tokens from transformer inside sender
         # [batch size, -1, model dim]
         # remember that [:,:,text_seq_len:] (first text_seq_len on dim 3 ) are relative to text, while others to img
@@ -104,6 +99,8 @@ class EmImTrain(torch.nn.Module):
                 scores=scores,
                 targets=targets,
             ),
+            batch_id=batch_id,
+
         )
 
 
@@ -180,20 +177,20 @@ if __name__ == '__main__':
         checkpoint_logger,
         progressbar
     ]
+    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
 
     if not deb_params.debug and True:
-        log_step=int(len(train_dl)*0.01)
-        image_log_step=log_step*10
 
 
-        wandb_logger = CustomWandbLogger(log_step=log_step, image_log_step=image_log_step, dalle=sender,
+        wandb_logger = CustomWandbLogger(train_log_step=train_step, val_log_step=val_step, dalle=sender,
                                          project='emim_train', model_config={},
                                          dir=pt_params.wandb_dir, opts={}, log_type="emim")
         callbacks.append(wandb_logger)
 
     # training
 
-    setting = EmImTrain(encoder, decoder, sender, deb_params.device)
+    setting = EmImTrain(encoder, decoder, sender, deb_params.device, train_logging_strategy=CustomLogging(train_step),
+                        test_logging_strategy=CustomLogging(val_step))
 
     trainer = core.Trainer(
         game=setting,

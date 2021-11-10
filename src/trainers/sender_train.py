@@ -6,7 +6,7 @@ from torch.optim import Adam, lr_scheduler, AdamW
 from src.Parameters import SenderParams, PathParams, DebugParams
 from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
-from src.utils import CustomWandbLogger
+from src.utils import CustomWandbLogger, get_loggings, CustomLogging
 
 
 class SenderTrain(torch.nn.Module):
@@ -32,7 +32,7 @@ class SenderTrain(torch.nn.Module):
             else test_logging_strategy
         )
 
-    def forward(self, images, text, mask, something):
+    def forward(self, images, text, mask, something, batch_id):
         loss = self.dalle(text, image=images, mask=mask, return_loss=True)
 
         logging_strategy = (
@@ -47,6 +47,7 @@ class SenderTrain(torch.nn.Module):
             message=None,
             receiver_output=None,
             aux={},
+            batch_id=batch_id,
         )
 
         return loss, interaction
@@ -85,15 +86,18 @@ if __name__ == '__main__':
         checkpoint_logger,
         progressbar
     ]
+    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
 
     if not deb_params.debug:
-        log_step = int(len(train_dl) * 0.01)
-        image_log_step = log_step * 10
 
-        wandb_logger = CustomWandbLogger(log_step=log_step, image_log_step=image_log_step, dalle=dalle,
+        wandb_logger = CustomWandbLogger(train_log_step=train_step, val_log_step=val_step, dalle=dalle,
                                          project='sender_train', model_config=model_config,
                                          dir=pt_params.wandb_dir, opts={}, log_type='sender')
         callbacks.append(wandb_logger)
+
+    sender_train = SenderTrain(dalle, train_logging_strategy=CustomLogging(train_step),
+                               test_logging_strategy=CustomLogging(val_step))
+
     # training
 
     trainer = core.Trainer(

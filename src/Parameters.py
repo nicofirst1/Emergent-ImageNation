@@ -72,27 +72,6 @@ class Params:
                     os.makedirs(path)
 
 
-class ReceiverParams(Params):
-    data_name = "receiver"
-
-    # Model parameters
-    emb_dim = 512  # dimension of word embeddings
-    attention_dim = 512  # dimension of attention linear layers
-    decoder_dim = 512  # dimension of decoder RNN
-    dropout = 0.5
-
-    # Training parameters
-    start_epoch = 0
-    epochs = 120  # number of epochs to train for (if early stopping is not triggered)
-    encoder_lr = 1e-4  # learning rate for encoder if fine-tuning
-    decoder_lr = 4e-4  # learning rate for decoder
-    grad_clip = 5.  # clip gradients at an absolute value of
-    alpha_c = 1.  # regularization parameter for 'doubly stochastic attention', as in the paper
-    print_freq = 100  # print training/validation stats every __ batches
-    fine_tune_encoder = False  # fine-tune encoder?
-    checkpoint = "./checkpoint_receiver.pth.tar"  # path to checkpoint, None if none
-
-    load_checkpoint=True
 
 
 class DebugParams(Params):
@@ -103,7 +82,7 @@ class DebugParams(Params):
     debug = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     workers = 4  # for data-loading; right now, only 1 works with h5py
-    batch_size = 8
+    batch_size = 16
     pin_memory = True
 
     def __init__(self):
@@ -121,6 +100,26 @@ class DebugParams(Params):
             torch.autograd.profiler.emit_nvtx(False)
             torch.backends.cudnn.benchmark = True
 
+
+class ReceiverParams(Params):
+    data_name = "receiver"
+
+    # Model parameters
+    emb_dim = 512  # dimension of word embeddings
+    attention_dim = 512  # dimension of attention linear layers
+    decoder_dim = 512  # dimension of decoder RNN
+    dropout = 0.5
+
+    # Training parameters
+    epochs = 120  # number of epochs to train for (if early stopping is not triggered)
+    encoder_lr = 1e-4  # learning rate for encoder if fine-tuning
+    decoder_lr = 4e-4  # learning rate for decoder
+    grad_clip = 5.  # clip gradients at an absolute value of
+    alpha_c = 1.  # regularization parameter for 'doubly stochastic attention', as in the paper
+    fine_tune_encoder = False  # fine-tune encoder?
+    checkpoint = "./checkpoint_receiver.pth.tar"  # path to checkpoint, None if none
+
+    load_checkpoint = True
 
 class SenderParams(Params):
     ### TRAINING
@@ -164,7 +163,7 @@ class PathParams(Params):
 
 class DataParams(Params):
     ### DATA CREATION
-    vocab_size = 49408  # used also in dalle setup
+    vocab_size_in = 49408  # used also in dalle setup
     captions_per_image = 5  # number of captions to keep per image
     min_word_freq = 5
     max_text_seq_len = 64
