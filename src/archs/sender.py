@@ -1,11 +1,10 @@
 from dalle_pytorch import DALLE, VQGanVAE
-
 from src.Parameters import DataParams, SenderParams
 
 
 def get_sender_params():
     params = SenderParams()
-    dt= DataParams()
+    dt = DataParams()
 
     return dict(
         num_text_tokens=dt.vocab_size_in,
@@ -14,7 +13,7 @@ def get_sender_params():
         depth=params.depth,
         heads=params.heads,
         dim_head=params.dim_head,
-        reversible=params.reversible
+        reversible=params.reversible,
     )
 
 

@@ -5,31 +5,29 @@ import wandb
 from dalle_pytorch.tokenizer import tokenizer
 from egg.core import Interaction, LoggingStrategy
 from egg.core.callbacks import WandbLogger
-
 from src.Parameters import PathParams
 
 
 class CustomLogging(LoggingStrategy):
-
     def __init__(self, log_step):
         super(CustomLogging, self).__init__()
 
         self.log_step = log_step
 
     def filtered_interaction(
-            self,
-            sender_input,
-            receiver_input,
-            labels,
-            aux_input,
-            message,
-            receiver_output,
-            message_length,
-            aux,
-            batch_id,
+        self,
+        sender_input,
+        receiver_input,
+        labels,
+        aux_input,
+        message,
+        receiver_output,
+        message_length,
+        aux,
+        batch_id,
     ):
 
-        if batch_id % self.log_step== 0:
+        if batch_id % self.log_step == 0:
 
             interaction = Interaction(
                 sender_input=sender_input if self.store_sender_input else None,
@@ -48,8 +46,9 @@ class CustomLogging(LoggingStrategy):
 
 
 class CustomWandbLogger(WandbLogger):
-
-    def __init__(self, train_log_step, val_log_step, dalle, dir, model_config, log_type, **kwargs):
+    def __init__(
+        self, train_log_step, val_log_step, dalle, dir, model_config, log_type, **kwargs
+    ):
 
         # create wandb dir if not existing
         if not os.path.isdir(dir):
@@ -63,7 +62,7 @@ class CustomWandbLogger(WandbLogger):
         self.model_config = model_config
         self.receiver_decoder = None
 
-        assert log_type in ['sender', 'receiver', 'emim']
+        assert log_type in ["sender", "receiver", "emim"]
         self.log_type = log_type
 
         self.epoch = 0
@@ -85,14 +84,10 @@ class CustomWandbLogger(WandbLogger):
         mask = mask.to(self.trainer.device)
 
         image = self.sender.generate_images(
-            sample_text,
-            mask=mask,
-            filter_thres=0.9  # topk sampling at 0.9
+            sample_text, mask=mask, filter_thres=0.9  # topk sampling at 0.9
         )
         image = image[0]
-        wandb_log = {
-            f'{flag}_sender': wandb.Image(image, caption=decoded_text)
-        }
+        wandb_log = {f"{flag}_sender": wandb.Image(image, caption=decoded_text)}
         return wandb_log
 
     def receiver_image_log(self, flag, logs):
@@ -106,7 +101,7 @@ class CustomWandbLogger(WandbLogger):
         preds = tokenizer.decode(logs.receiver_output)
         img = logs.sender_input
 
-        return {f'{flag}_receiver': wandb.Image(img, caption=preds)}
+        return {f"{flag}_receiver": wandb.Image(img, caption=preds)}
 
     def emim_image_log(self, flag, logs):
         """
@@ -125,12 +120,13 @@ class CustomWandbLogger(WandbLogger):
 
         # pred_image = logs.aux['sender_img']
 
-        return {f'{flag}_original': wandb.Image(original_image, caption=original_caption),
-                # f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
-                }
+        return {
+            f"{flag}_original": wandb.Image(original_image, caption=original_caption),
+            # f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
+        }
 
     def on_batch_end(
-            self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
+        self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
     ):
 
         flag = "training" if is_training else "validation"
@@ -148,18 +144,18 @@ class CustomWandbLogger(WandbLogger):
         wandb_log = {
             f"{flag}_loss": loss,
             f"{flag}_iter": batch_id,
-            f"{flag}_epoch": self.epoch
+            f"{flag}_epoch": self.epoch,
         }
 
-        if self.log_type is not 'sender':
-            top5 = accuracy(logs.aux['scores'], logs.aux['targets'], 5)
+        if self.log_type is not "sender":
+            top5 = accuracy(logs.aux["scores"], logs.aux["targets"], 5)
             wandb_log[f"{flag}_top5"] = top5
 
         # image logging
         if batch_id % image_log_step == 0:
-            if self.log_type == 'sender':
+            if self.log_type == "sender":
                 img_log = self.sender_image_log(flag, logs)
-            elif self.log_type == 'receiver':
+            elif self.log_type == "receiver":
                 img_log = self.receiver_image_log(flag, logs)
             else:
                 img_log = self.emim_image_log(flag, logs)
@@ -169,8 +165,10 @@ class CustomWandbLogger(WandbLogger):
         self.log_to_wandb(wandb_log, commit=True)
 
     def on_epoch_end(self, loss: float, logs: Interaction, epoch: int):
-        model_artifact = wandb.Artifact('trained-dalle', type='model', metadata=dict(self.model_config))
-        model_artifact.add_file('dalle.pt')
+        model_artifact = wandb.Artifact(
+            "trained-dalle", type="model", metadata=dict(self.model_config)
+        )
+        model_artifact.add_file("dalle.pt")
         self.epoch += 1
 
     def on_validation_end(self, loss: float, logs: Interaction, epoch: int):
@@ -179,7 +177,7 @@ class CustomWandbLogger(WandbLogger):
 
 
 def build_translation_vocabulary():
-    with open(PathParams.receiver_wordmap_path, 'r') as j:
+    with open(PathParams.receiver_wordmap_path, "r") as j:
         word_map = json.load(j)
 
     rev_word_map = {v: k for k, v in word_map.items()}
@@ -189,7 +187,7 @@ def build_translation_vocabulary():
 def dictionary_decode(dictionary):
     def decode(sentence):
         # remove last word
-        translated_caption = [dictionary.get(int(elem), 'unk') for elem in sentence]
+        translated_caption = [dictionary.get(int(elem), "unk") for elem in sentence]
 
         return " ".join(translated_caption)
 
@@ -243,7 +241,9 @@ def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
         true_description = [text_decoder.decode(elem) for elem in true_description]
 
         if isinstance(output_decoder, dict):
-            receiver_output = [[output_decoder[int(elem)] for elem in x] for x in receiver_output]
+            receiver_output = [
+                [output_decoder[int(elem)] for elem in x] for x in receiver_output
+            ]
             receiver_output = [" ".join(x) for x in receiver_output]
 
         else:
@@ -253,17 +253,17 @@ def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
         emb1 = encode(receiver_output)
         emb2 = encode(true_description)
 
-        emb1 = emb1['sentence_embedding']
-        emb2 = emb2['sentence_embedding']
+        emb1 = emb1["sentence_embedding"]
+        emb2 = emb2["sentence_embedding"]
 
         loss = -util.cos_sim(emb1, emb2)
         loss = loss.mean().to(device)
 
         return loss
 
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    model = SentenceTransformer("all-MiniLM-L6-v2")
     return inner
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     build_translation_vocabulary()
