@@ -23,6 +23,7 @@ class CustomWandbLogger(WandbLogger):
         self.image_log_step = image_log_step
         self.sender = dalle
         self.model_config = model_config
+        self.receiver_decoder=None
 
         assert log_type in ['sender', 'receiver', 'emim']
         self.log_type = log_type
@@ -64,7 +65,10 @@ class CustomWandbLogger(WandbLogger):
         :return:
         """
 
-        preds = tokenizer.decode(logs.receiver_output)
+        if self.receiver_decoder is not None:
+            preds=self.receiver_decoder(logs.receiver_output)
+        else:
+            preds = tokenizer.decode(logs.receiver_output)
         img = logs.sender_input
 
         return {f'{flag}_receiver': wandb.Image(img, caption=preds)}
@@ -82,7 +86,11 @@ class CustomWandbLogger(WandbLogger):
 
         original_image = logs.sender_input
 
-        pred_caption = tokenizer.decode(logs.receiver_output)
+        if self.receiver_decoder is not None:
+            preds = self.receiver_decoder(logs.receiver_output)
+        else:
+            preds = tokenizer.decode(logs.receiver_output)
+
         # pred_image = logs.aux['sender_img']
 
         return {f'{flag}_original': wandb.Image(original_image, caption=original_caption),
@@ -145,6 +153,14 @@ def build_translation_vocabulary():
     rev_word_map = {v: k for k, v in word_map.items()}
     return word_map, rev_word_map
 
+
+def dictionary_decode(dictionary):
+    def decode(sentence):
+        # remove last word
+        translated_caption = [dictionary.get(int(elem), 'unk') for elem in sentence]
+
+        return " ".join(translated_caption)
+    return decode
 
 def accuracy(scores, targets, k):
     """
