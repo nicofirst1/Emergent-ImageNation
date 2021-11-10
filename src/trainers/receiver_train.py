@@ -10,7 +10,7 @@ from src.Parameters import PathParams, ReceiverParams, DataParams, DebugParams
 from src.archs.receiver import get_recevier
 # Data parameters
 from src.dataset import get_dataloaders
-from src.utils import CustomWandbLogger
+from src.utils import CustomWandbLogger, build_translation_vocabulary, dictionary_decode
 
 
 class ReceiverTrain(torch.nn.Module):
@@ -134,10 +134,17 @@ if __name__ == '__main__':
         progressbar
     ]
 
-    if not deb_params.debug:
-        wandb_logger = CustomWandbLogger(log_step=100, image_log_step=1000, dalle=None,
+    if True:
+        log_step = int(len(train_dl) * 0.01)
+        image_log_step = log_step * 10
+        wandb_logger = CustomWandbLogger(log_step=log_step, image_log_step=image_log_step, dalle=None,
                                          project='receiver_train', model_config={},
                                          dir=pt_params.wandb_dir, opts={}, log_type="receiver")
+
+        if rt_params.load_checkpoint:
+            w2i, i2w = build_translation_vocabulary()
+            wandb_logger.receiver_decoder= dictionary_decode(i2w)
+
         callbacks.append(wandb_logger)
 
     # training
