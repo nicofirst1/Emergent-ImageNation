@@ -1,5 +1,30 @@
+import torch
 from dalle_pytorch import DALLE, VQGanVAE
+from dalle_pytorch.tokenizer import tokenizer
+
 from src.Parameters import DataParams, SenderParams
+
+
+class CustomDalle(DALLE):
+
+    def forward(
+            self,
+            text,
+            image=None,
+            mask=None,
+            return_loss=False,
+            return_tokens=False,
+    ):
+
+        # tokenize captions
+        captions = ["<|startoftext|> " + cap + " <|endoftext|>" for cap in text]
+        captions = tokenizer.tokenize(captions, context_length=self.text_seq_len)
+        captions = torch.LongTensor(captions)
+
+        return super(CustomDalle, self).forward(captions, image=image,
+                                                mask=mask,
+                                                return_loss=return_loss,
+                                                return_tokens=return_tokens)
 
 
 def get_sender_params():
@@ -23,6 +48,6 @@ def get_sender(dalle_params=None) -> DALLE:
 
     vae = VQGanVAE()  # loads pretrained taming Transformer
 
-    dalle = DALLE(vae=vae, **dalle_params)
+    dalle = CustomDalle(vae=vae, **dalle_params)
 
     return dalle

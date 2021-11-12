@@ -121,7 +121,7 @@ class ReceiverParams(Params):
     grad_clip = 5.0  # clip gradients at an absolute value of
     alpha_c = 1.0  # regularization parameter for 'doubly stochastic attention', as in the paper
     fine_tune_encoder = False  # fine-tune encoder?
-    checkpoint = "./checkpoint_receiver.pth.tar"  # path to checkpoint, None if none
+    checkpoint = "./checkpoint_receiver"  # path to checkpoint, None if none
 
     load_checkpoint = True
 

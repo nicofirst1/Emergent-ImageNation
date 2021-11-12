@@ -2,7 +2,7 @@ import json
 import os
 
 import wandb
-from dalle_pytorch.tokenizer import tokenizer
+from dalle_pytorch.tokenizer import tokenizer, SimpleTokenizer
 from egg.core import Interaction, LoggingStrategy
 from egg.core.callbacks import WandbLogger
 from src.Parameters import PathParams
@@ -143,7 +143,7 @@ class CustomWandbLogger(WandbLogger):
 
         wandb_log = {
             f"{flag}_loss": loss,
-            f"{flag}_iter": batch_id,
+            f"{flag}_iter": batch_id*(self.epoch+1),
             f"{flag}_epoch": self.epoch,
         }
 
@@ -162,7 +162,7 @@ class CustomWandbLogger(WandbLogger):
 
             wandb_log.update(img_log)
 
-        self.log_to_wandb(wandb_log, commit=True)
+        self.log_to_wandb(wandb_log, commit=True, step=batch_id)
 
     def on_epoch_end(self, loss: float, logs: Interaction, epoch: int):
         model_artifact = wandb.Artifact(
@@ -181,6 +181,7 @@ def build_translation_vocabulary():
         word_map = json.load(j)
 
     rev_word_map = {v: k for k, v in word_map.items()}
+
     return word_map, rev_word_map
 
 
@@ -220,8 +221,7 @@ def get_loggings(train_len, val_len, perc=0.01):
     return train_step, val_step
 
 
-def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
-    # fixme: put on specific device
+def SBERT_loss(device, output_decoder=tokenizer):
     def inner(true_description, receiver_output):
         """
         Estimate the Cosine similarity among sentences
@@ -238,8 +238,6 @@ def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
 
             return out_features
 
-        true_description = [text_decoder.decode(elem) for elem in true_description]
-
         if isinstance(output_decoder, dict):
             receiver_output = [
                 [output_decoder[int(elem)] for elem in x] for x in receiver_output
@@ -247,7 +245,6 @@ def SBERT_loss(device, output_decoder=tokenizer, text_decoder=tokenizer):
             receiver_output = [" ".join(x) for x in receiver_output]
 
         else:
-
             receiver_output = [output_decoder.decode(elem) for elem in receiver_output]
 
         emb1 = encode(receiver_output)

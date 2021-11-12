@@ -91,7 +91,7 @@ class CaptionDataset(Dataset):
             img = self.transform(img)
 
         cap_index = random.randint(0, len(self.captions[i]) - 1)
-        caption = torch.LongTensor(self.captions[i][cap_index])
+        caption =self.captions[i][cap_index]
         caplen = torch.LongTensor([self.caplens[i][cap_index]])
 
         if False:  # set to true if you want to debug the image/caption pair
@@ -281,10 +281,11 @@ def create_input_files(
                 dataset[i] = img
 
             #  encode every caption
-            captions = ["<|startoftext|> " + cap + " <|endoftext|>" for cap in captions]
-            ec = tokenizer.tokenize(captions, context_length=max_len)
-            enc_captions.append(ec)
-            caplens.append([torch.count_nonzero(cap) for cap in ec])
+            # captions = ["<|startoftext|> " + cap + " <|endoftext|>" for cap in captions]
+            # ec = tokenizer.tokenize(captions, context_length=max_len)
+            #fixme : maybe at least tokenize (split words, punctuations ...) before train
+            enc_captions.append(captions)
+            caplens.append([len(cap.split()) for cap in captions])
 
         # Sanity check
         if data_params.generate_data_url:

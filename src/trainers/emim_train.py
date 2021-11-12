@@ -86,8 +86,8 @@ class EmImTrain(torch.nn.Module):
 
         preds_log = preds[0]
 
-        text, mask, preds_log, scores, targets = map(
-            lambda c: c.detach().to("cpu"), [text, mask, preds_log, scores, targets]
+        mask, preds_log, scores, targets = map(
+            lambda c: c.detach().to("cpu"), [ mask, preds_log, scores, targets]
         )
 
         logging_strategy = (

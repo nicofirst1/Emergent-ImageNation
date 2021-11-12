@@ -1,9 +1,12 @@
+from typing import List
+
 import torch
 import torchvision
 from dalle_pytorch.tokenizer import tokenizer
+from torch import nn
+
 from src.Parameters import DataParams, DebugParams, PathParams, ReceiverParams
 from src.utils import build_translation_vocabulary
-from torch import nn
 
 
 class Encoder(nn.Module):
@@ -117,15 +120,16 @@ class DecoderWithAttention(nn.Module):
     """
 
     def __init__(
-        self,
-        attention_dim,
-        embed_dim,
-        decoder_dim,
-        vocab_size_in,
-        vocab_size_out,
-        device,
-        encoder_dim=512,
-        dropout=0.5,
+            self,
+            attention_dim,
+            embed_dim,
+            decoder_dim,
+            vocab_size_in,
+            vocab_size_out,
+            device,
+            tokenizer,
+            encoder_dim=512,
+            dropout=0.5,
     ):
         """
         :param attention_dim: size of attention network
@@ -149,7 +153,7 @@ class DecoderWithAttention(nn.Module):
         self.attention = Attention(
             encoder_dim, decoder_dim, attention_dim
         )  # attention network
-        self.text_converter = None
+        self.tokenizer = tokenizer
 
         self.embedding = nn.Embedding(vocab_size_in, embed_dim)  # embedding layer
         self.dropout = nn.Dropout(p=self.dropout)
@@ -226,17 +230,19 @@ class DecoderWithAttention(nn.Module):
         c = self.init_c(mean_encoder_out)
         return h, c
 
-    def forward(self, encoder_out, encoded_captions, caption_lengths):
+    def forward(self, encoder_out, captions, caption_lengths):
         """
         Forward propagation.
         :param encoder_out: encoded images, a tensor of dimension (batch_size, enc_image_size, enc_image_size, encoder_dim)
-        :param encoded_captions: encoded captions, a tensor of dimension (batch_size, max_caption_length)
+        :param captions: encoded captions, a tensor of dimension (batch_size, max_caption_length)
         :param caption_lengths: caption lengths, a tensor of dimension (batch_size, 1)
         :return: scores for vocabulary, sorted encoded captions, decode lengths, weights, sort indices
         """
 
         batch_size = encoder_out.size(0)
         vocab_size = self.vocab_size_out
+
+        captions = self.tokenizer(captions)
 
         # Flatten image
         num_pixels = encoder_out.size(1)
@@ -246,33 +252,11 @@ class DecoderWithAttention(nn.Module):
             dim=0, descending=True
         )
         encoder_out = encoder_out[sort_ind]
-        encoded_captions = encoded_captions[sort_ind]
-
-        if self.text_converter is not None:
-            encoding_len = encoded_captions.shape[1]
-            # translate back to english
-            translated_caption = [tokenizer.decode(elem) for elem in encoded_captions]
-            # remove last word
-            translated_caption = [elem.split()[:-1] for elem in translated_caption]
-            # convert to other vocab
-            encoded_captions = [
-                [
-                    self.text_converter.get(elem, self.text_converter["<unk>"])
-                    for elem in x
-                ]
-                for x in translated_caption
-            ]
-            # pad
-            encoded_captions = [
-                x + [self.text_converter["<pad>"]] * (encoding_len - len(x))
-                for x in encoded_captions
-            ]
-            # move back to device
-            encoded_captions = torch.as_tensor(encoded_captions).to(self.device)
+        captions = captions[sort_ind]
 
         # Embedding
         embeddings = self.embedding(
-            encoded_captions
+            captions
         )  # (batch_size, max_caption_length, embed_dim)
 
         # Initialize LSTM state
@@ -313,7 +297,29 @@ class DecoderWithAttention(nn.Module):
             predictions[:batch_size_t, t, :] = preds
             alphas[:batch_size_t, t, :] = alpha
 
-        return predictions, encoded_captions, decode_lengths, alphas, sort_ind
+        return predictions, captions, decode_lengths, alphas, sort_ind
+
+
+def tokenizer(w2i_map, encoding_len, device):
+    def inner_sentence(sentences: List[str]) -> torch.Tensor:
+        sentences = [
+            [
+                w2i_map.get(elem, w2i_map["<unk>"])  # get the id for the word if present, if not get id for unk
+                for elem in x.split()  # split sentences into list  of words
+            ]
+            for x in sentences
+        ]
+        # pad
+        sentences = [
+            x + [w2i_map["<pad>"]] * (encoding_len - len(x))  # pad in order to get to encoding_len
+            for x in sentences
+        ]
+        # move back to device
+        sentences = torch.as_tensor(sentences).to(device)
+
+        return sentences
+
+    return inner_sentence
 
 
 def get_recevier():
@@ -331,7 +337,12 @@ def get_recevier():
     if rec_params.load_checkpoint:
         # use values the decoder was trained with
         vocab_size_in = 9490
+        vocab_size_out = vocab_size_in
         encoder_dim = 2048
+
+    # build internal word tokenizer
+    w2i, i2w = build_translation_vocabulary()
+    token = tokenizer(w2i, data_params.max_text_seq_len, deb_params.device)
 
     decoder = DecoderWithAttention(
         attention_dim=rec_params.attention_dim,
@@ -342,14 +353,12 @@ def get_recevier():
         dropout=rec_params.dropout,
         device=deb_params.device,
         encoder_dim=encoder_dim,
+        tokenizer=token,
     )
 
     if rec_params.load_checkpoint:
         checkpoint = torch.load(PathParams.receiver_decoder_model_path)
         decoder.on_load_checkpoint(checkpoint)
-
-        d2c, c2d = build_translation_vocabulary()
-        decoder.text_converter = d2c
 
     decoder = decoder.to(deb_params.device)
     encoder = encoder.to(deb_params.device)
