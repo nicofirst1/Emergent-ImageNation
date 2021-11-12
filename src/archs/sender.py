@@ -2,10 +2,15 @@ import torch
 from dalle_pytorch import DALLE, VQGanVAE
 from dalle_pytorch.tokenizer import tokenizer
 
-from src.Parameters import DataParams, SenderParams
+from src.Parameters import DataParams, SenderParams, DebugParams
 
 
 class CustomDalle(DALLE):
+
+    def __init__(self, device, use_image, **kwargs):
+        super(CustomDalle, self).__init__(**kwargs)
+        self.device = device
+        self.use_image = use_image
 
     def forward(
             self,
@@ -15,11 +20,13 @@ class CustomDalle(DALLE):
             return_loss=False,
             return_tokens=False,
     ):
-
         # tokenize captions
         captions = ["<|startoftext|> " + cap + " <|endoftext|>" for cap in text]
         captions = tokenizer.tokenize(captions, context_length=self.text_seq_len)
-        captions = torch.LongTensor(captions)
+        captions = torch.LongTensor(captions).to(self.device)
+
+        if not self.use_image:
+            image = None
 
         return super(CustomDalle, self).forward(captions, image=image,
                                                 mask=mask,
@@ -30,6 +37,7 @@ class CustomDalle(DALLE):
 def get_sender_params():
     params = SenderParams()
     dt = DataParams()
+    db = DebugParams()
 
     return dict(
         num_text_tokens=dt.vocab_size_in,
@@ -39,6 +47,8 @@ def get_sender_params():
         heads=params.heads,
         dim_head=params.dim_head,
         reversible=params.reversible,
+        device=db.device,
+        use_image=params.use_image,
     )
 
 

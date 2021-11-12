@@ -57,6 +57,7 @@ class EmImTrain(torch.nn.Module):
         # get tokens from transformer inside sender
         # [batch size, -1, model dim]
         # remember that [:,:,text_seq_len:] (first text_seq_len on dim 3 ) are relative to text, while others to img
+
         sender_tokens = self.sender(text, mask=mask, image=images, return_tokens=True)
 
         # normalize and sub std
@@ -85,11 +86,12 @@ class EmImTrain(torch.nn.Module):
         # estimate loss
         loss = self.loss_function(text, preds)
 
-        mask, preds = map(
-            lambda c: c.detach().to("cpu"), [mask, preds]
+        preds = torch.nn.functional.pad(preds, (0, caps_sorted.shape[1] - preds.shape[1], 0, 0))
+
+        mask, preds, img = map(
+            lambda c: c.detach().to("cpu"), [mask, preds, img]
         )
 
-        preds = torch.nn.functional.pad(preds, (0, caps_sorted.shape[1] - preds.shape[1], 0, 0))
 
         scores, targets = map(
             lambda c: c.to("cpu"), [scores, targets]
@@ -189,7 +191,7 @@ if __name__ == "__main__":
     )
 
     callbacks = [checkpoint_logger, progressbar]
-    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.1)
+    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
 
     if True:
         wandb_logger = CustomWandbLogger(
