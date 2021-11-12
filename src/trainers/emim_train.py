@@ -144,7 +144,7 @@ if __name__ == "__main__":
     #   RECEIVER
     #################
     # get architecture
-    decoder, encoder = get_recevier()
+    decoder, encoder, tokenizer = get_recevier()
 
     # initialize optimizers
 
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     callbacks = [checkpoint_logger, progressbar]
     train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
 
-    if not deb_params.debug and True:
+    if  True:
         wandb_logger = CustomWandbLogger(
             train_log_step=train_step,
             val_log_step=val_step,
@@ -200,6 +200,8 @@ if __name__ == "__main__":
             dir=pt_params.wandb_dir,
             opts={},
             log_type="emim",
+            mode="disabled" if deb_params.debug else "online",
+            tokenizer=tokenizer,
         )
         callbacks.append(wandb_logger)
 

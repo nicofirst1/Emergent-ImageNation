@@ -2,9 +2,10 @@ import json
 import os
 
 import wandb
-from dalle_pytorch.tokenizer import tokenizer, SimpleTokenizer
+from dalle_pytorch.tokenizer import tokenizer
 from egg.core import Interaction, LoggingStrategy
 from egg.core.callbacks import WandbLogger
+
 from src.Parameters import PathParams
 
 
@@ -15,16 +16,16 @@ class CustomLogging(LoggingStrategy):
         self.log_step = log_step
 
     def filtered_interaction(
-        self,
-        sender_input,
-        receiver_input,
-        labels,
-        aux_input,
-        message,
-        receiver_output,
-        message_length,
-        aux,
-        batch_id,
+            self,
+            sender_input,
+            receiver_input,
+            labels,
+            aux_input,
+            message,
+            receiver_output,
+            message_length,
+            aux,
+            batch_id,
     ):
 
         if batch_id % self.log_step == 0:
@@ -47,7 +48,7 @@ class CustomLogging(LoggingStrategy):
 
 class CustomWandbLogger(WandbLogger):
     def __init__(
-        self, train_log_step, val_log_step, dalle, dir, model_config, log_type, **kwargs
+            self, train_log_step, val_log_step, tokenizer, dalle, dir, model_config, log_type, **kwargs
     ):
 
         # create wandb dir if not existing
@@ -61,6 +62,7 @@ class CustomWandbLogger(WandbLogger):
         self.sender = dalle
         self.model_config = model_config
         self.receiver_decoder = None
+        self.tokenizer = tokenizer
 
         assert log_type in ["sender", "receiver", "emim"]
         self.log_type = log_type
@@ -98,7 +100,7 @@ class CustomWandbLogger(WandbLogger):
         :return:
         """
 
-        preds = tokenizer.decode(logs.receiver_output)
+        preds = self.tokenizer.decode(logs.receiver_output)
         img = logs.sender_input
 
         return {f"{flag}_receiver": wandb.Image(img, caption=preds)}
@@ -110,30 +112,29 @@ class CustomWandbLogger(WandbLogger):
         :param logs:
         :return:
         """
-        sample_text = logs.labels[:1]
-        token_list = sample_text.masked_select(sample_text != 0).tolist()
-        original_caption = tokenizer.decode(token_list)
-
+        original_caption = logs.labels[0]
         original_image = logs.sender_input
 
-        preds = tokenizer.decode(logs.receiver_output)
+        pred = self.tokenizer.decode(logs.receiver_output)
 
-        # pred_image = logs.aux['sender_img']
+        columns = ["Original Caption", "Predicted caption"]
+        table=wandb.Table(columns=columns)
+        table.add_data(original_caption, pred)
 
         return {
             f"{flag}_original": wandb.Image(original_image, caption=original_caption),
-            # f'{flag}_predicted': wandb.Image(pred_image, caption=pred_caption)
+            f"{flag}_captions": table,
         }
 
     def on_batch_end(
-        self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
+            self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
     ):
 
         flag = "training" if is_training else "validation"
 
         log_step = self.train_log_step
 
-        if flag == "validation":
+        if not is_training:
             log_step = self.val_log_step
 
         image_log_step = log_step * 10
@@ -143,7 +144,7 @@ class CustomWandbLogger(WandbLogger):
 
         wandb_log = {
             f"{flag}_loss": loss,
-            f"{flag}_iter": batch_id*(self.epoch+1),
+            f"{flag}_iter": batch_id * (self.epoch + 1),
             f"{flag}_epoch": self.epoch,
         }
 

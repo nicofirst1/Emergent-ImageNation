@@ -2,7 +2,6 @@ from typing import List
 
 import torch
 import torchvision
-from dalle_pytorch.tokenizer import tokenizer
 from torch import nn
 
 from src.Parameters import DataParams, DebugParams, PathParams, ReceiverParams
@@ -242,7 +241,7 @@ class DecoderWithAttention(nn.Module):
         batch_size = encoder_out.size(0)
         vocab_size = self.vocab_size_out
 
-        captions = self.tokenizer(captions)
+        captions = self.tokenizer.encode(captions)
 
         # Flatten image
         num_pixels = encoder_out.size(1)
@@ -300,26 +299,40 @@ class DecoderWithAttention(nn.Module):
         return predictions, captions, decode_lengths, alphas, sort_ind
 
 
-def tokenizer(w2i_map, encoding_len, device):
-    def inner_sentence(sentences: List[str]) -> torch.Tensor:
+class Tokenizer:
+    """
+    Tokenize sentences using predefine word mapping
+    """
+
+    def __init__(self, w2i_map, i2w_map, encoding_len, device):
+        self.w2i_map = w2i_map
+        self.i2w_map = i2w_map
+        self.encoding_len = encoding_len
+        self.device = device
+
+    def encode(self, sentences: List[str]) -> torch.Tensor:
         sentences = [
             [
-                w2i_map.get(elem, w2i_map["<unk>"])  # get the id for the word if present, if not get id for unk
+                self.w2i_map.get(elem, self.w2i_map["<unk>"])
+                # get the id for the word if present, if not get id for unk
                 for elem in x.split()  # split sentences into list  of words
             ]
             for x in sentences
         ]
         # pad
         sentences = [
-            x + [w2i_map["<pad>"]] * (encoding_len - len(x))  # pad in order to get to encoding_len
+            x + [self.w2i_map["<pad>"]] * (self.encoding_len - len(x))
+            # pad in order to get to encoding_len
             for x in sentences
         ]
         # move back to device
-        sentences = torch.as_tensor(sentences).to(device)
-
+        sentences = torch.as_tensor(sentences).to(self.device)
         return sentences
 
-    return inner_sentence
+    def decode(self, sentence: torch.Tensor):
+        sentence = [self.i2w_map.get(int(elem), "unk") for elem in sentence]
+
+        return " ".join(sentence)
 
 
 def get_recevier():
@@ -342,7 +355,7 @@ def get_recevier():
 
     # build internal word tokenizer
     w2i, i2w = build_translation_vocabulary()
-    token = tokenizer(w2i, data_params.max_text_seq_len, deb_params.device)
+    token = Tokenizer(w2i, i2w, data_params.max_text_seq_len, deb_params.device)
 
     decoder = DecoderWithAttention(
         attention_dim=rec_params.attention_dim,
@@ -363,4 +376,4 @@ def get_recevier():
     decoder = decoder.to(deb_params.device)
     encoder = encoder.to(deb_params.device)
 
-    return decoder, encoder
+    return decoder, encoder, token
