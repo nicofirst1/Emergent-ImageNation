@@ -121,7 +121,6 @@ class ReceiverParams(Params):
     grad_clip = 5.0  # clip gradients at an absolute value of
     alpha_c = 1.0  # regularization parameter for 'doubly stochastic attention', as in the paper
     fine_tune_encoder = False  # fine-tune encoder?
-    checkpoint = "./checkpoint_receiver"  # path to checkpoint, None if none
 
     load_checkpoint = True
 
@@ -147,7 +146,6 @@ class SenderParams(Params):
     dim_head = 64
     reversible = True
 
-    checkpoint = "./checkpoint_sender.pth.tar"  # path to checkpoint, None if none
     use_image = True
 
 
@@ -159,6 +157,10 @@ class PathParams(Params):
     coco_path = "/home/dizzi/Desktop/coco/"
 
     wandb_dir = "./wandb_metadata"
+
+    checkpoint_receiver = "./checkpoint_receiver"  # path to checkpoint, None if none
+    checkpoint_sender = "./checkpoint_sender"  # path to checkpoint, None if none
+    checkpoint_emim = "./checkpoint_emim"  # path to checkpoint, None if none
 
     receiver_decoder_model_path = os.path.join(
         preprocessed_dir, "receiver_decoder_check.tar"

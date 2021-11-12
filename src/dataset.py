@@ -11,8 +11,9 @@ import torch
 from dalle_pytorch.tokenizer import SimpleTokenizer
 from imageio import imread
 from rich.progress import track
-from src.Parameters import DataParams, DebugParams, PathParams
 from torch.utils.data import DataLoader, Dataset
+
+from src.Parameters import DataParams, DebugParams, PathParams
 
 
 class CaptionDataset(Dataset):
@@ -91,7 +92,7 @@ class CaptionDataset(Dataset):
             img = self.transform(img)
 
         cap_index = random.randint(0, len(self.captions[i]) - 1)
-        caption =self.captions[i][cap_index]
+        caption = self.captions[i][cap_index]
         caplen = torch.LongTensor([self.caplens[i][cap_index]])
 
         if False:  # set to true if you want to debug the image/caption pair
@@ -102,15 +103,11 @@ class CaptionDataset(Dataset):
             decoded = SimpleTokenizer().decode(caption)
             print(decoded)
 
-        if self.split == "TRAIN":
-            return img, caption, caplen
-        else:
-            # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
-            all_captions =self.captions[i]
-            return img, caption, caplen, all_captions
+        all_captions = self.captions[i]
+        return img, caption, caplen, all_captions
 
     def __len__(self):
-        return self.dataset_size
+        return 10  # self.dataset_size
 
 
 def get_dataloaders(transform=None):
@@ -158,13 +155,13 @@ def img_processing(img):
 
 
 def create_input_files(
-    karpathy_json_path,
-    image_folder,
-    captions_per_image,
-    output_folder,
-    data_name,
-    max_len=256,
-    seed_val=8008,
+        karpathy_json_path,
+        image_folder,
+        captions_per_image,
+        output_folder,
+        data_name,
+        max_len=256,
+        seed_val=8008,
 ):
     """
     Creates input files for training, validation, and test data.
@@ -255,9 +252,9 @@ def create_input_files(
         caplens = []
 
         for i, path in track(
-            enumerate(impaths),
-            description=f"Creating {split} h5...",
-            total=len(impaths),
+                enumerate(impaths),
+                description=f"Creating {split} h5...",
+                total=len(impaths),
         ):
 
             # Sample captions
@@ -283,7 +280,7 @@ def create_input_files(
             #  encode every caption
             # captions = ["<|startoftext|> " + cap + " <|endoftext|>" for cap in captions]
             # ec = tokenizer.tokenize(captions, context_length=max_len)
-            #fixme : maybe at least tokenize (split words, punctuations ...) before train
+            # fixme : maybe at least tokenize (split words, punctuations ...) before train
             enc_captions.append(captions)
             caplens.append([len(cap.split()) for cap in captions])
 

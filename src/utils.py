@@ -1,54 +1,27 @@
 import json
 import os
+from itertools import chain
 
 import wandb
 from dalle_pytorch.tokenizer import tokenizer
-from egg.core import Interaction, LoggingStrategy
+from egg.core import Interaction
 from egg.core.callbacks import WandbLogger
+from nltk.translate.bleu_score import sentence_bleu
 
 from src.Parameters import PathParams
 
 
-class CustomLogging(LoggingStrategy):
-    def __init__(self, log_step):
-        super(CustomLogging, self).__init__()
-
-        self.log_step = log_step if log_step>0 else 2
-
-    def filtered_interaction(
-            self,
-            sender_input,
-            receiver_input,
-            labels,
-            aux_input,
-            message,
-            receiver_output,
-            message_length,
-            aux,
-            batch_id,
-    ):
-
-        if batch_id % self.log_step == 0:
-
-            interaction = Interaction(
-                sender_input=sender_input if self.store_sender_input else None,
-                receiver_input=receiver_input if self.store_receiver_input else None,
-                labels=labels if self.store_labels else None,
-                aux_input=aux_input if self.store_aux_input else None,
-                message=message if self.store_message else None,
-                receiver_output=receiver_output if self.store_receiver_output else None,
-                message_length=message_length if self.store_message_length else None,
-                aux=aux,
-            )
-        else:
-            interaction = Interaction.empty()
-
-        return interaction
-
-
 class CustomWandbLogger(WandbLogger):
     def __init__(
-            self, train_log_step, val_log_step, tokenizer, dalle, dir, model_config, log_type, **kwargs
+        self,
+        train_log_step,
+        val_log_step,
+        tokenizer,
+        dalle,
+        dir,
+        model_config,
+        log_type,
+        **kwargs,
     ):
 
         # create wandb dir if not existing
@@ -57,8 +30,8 @@ class CustomWandbLogger(WandbLogger):
 
         super(CustomWandbLogger, self).__init__(dir=dir, config=model_config, **kwargs)
 
-        self.train_log_step = train_log_step if train_log_step>0 else 2
-        self.val_log_step = val_log_step if val_log_step>0 else 2
+        self.train_log_step = train_log_step if train_log_step > 0 else 2
+        self.val_log_step = val_log_step if val_log_step > 0 else 2
         self.sender = dalle
         self.model_config = model_config
         self.receiver_decoder = None
@@ -115,10 +88,10 @@ class CustomWandbLogger(WandbLogger):
         original_caption = logs.labels[0]
         original_image = logs.sender_input
 
-        pred = self.tokenizer.decode(logs.receiver_output)
+        pred = self.tokenizer.decode(logs.receiver_output[0])
 
         columns = ["Original Caption", "Predicted caption"]
-        table=wandb.Table(columns=columns)
+        table = wandb.Table(columns=columns)
         table.add_data(original_caption, pred)
 
         return {
@@ -127,7 +100,7 @@ class CustomWandbLogger(WandbLogger):
         }
 
     def on_batch_end(
-            self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
+        self, logs: Interaction, loss: float, batch_id: int, is_training: bool = True
     ):
 
         flag = "training" if is_training else "validation"
@@ -140,9 +113,6 @@ class CustomWandbLogger(WandbLogger):
         image_log_step = log_step * 10
 
         if logs.is_empty():
-            return
-
-        if batch_id % log_step != 0:
             return
 
         wandb_log = {
@@ -169,15 +139,44 @@ class CustomWandbLogger(WandbLogger):
         self.log_to_wandb(wandb_log, commit=True, step=batch_id)
 
     def on_epoch_end(self, loss: float, logs: Interaction, epoch: int):
-        model_artifact = wandb.Artifact(
-            "trained-dalle", type="model", metadata=dict(self.model_config)
-        )
-        model_artifact.add_file("dalle.pt")
+
+        self.log_bleu_score(logs, "training")
         self.epoch += 1
 
+        model_artifact = wandb.Artifact(
+            "trained-game", type="model", metadata=dict(self.model_config)
+        )
+        model_path = os.path.join(PathParams.checkpoint_emim, f"{self.epoch}.tar")
+
+        model_artifact.add_file(model_path)
+        wandb.log_artifact(model_artifact)
+
+    def log_bleu_score(self, logs, flag):
+        references = logs.aux_input["all_captions"]
+        references = [list(zip(*elem)) for elem in references]
+        references = list(chain.from_iterable(references))
+
+        hypotesys = logs.receiver_output
+
+        hypotesys = [elem[elem.nonzero()].squeeze().tolist() for elem in hypotesys]
+        hypotesys = [self.tokenizer.decode(elem) for elem in hypotesys]
+
+        bleu = 0
+        for i in range(len(hypotesys)):
+            bleu += sentence_bleu(references[i], hypotesys[i])
+
+        bleu /= i + 1
+
+        self.log_to_wandb(
+            {
+                f"{flag}_bleu": bleu,
+            },
+            commit=True,
+        )
+
     def on_validation_end(self, loss: float, logs: Interaction, epoch: int):
-        a = 1
-        # todo: add    bleu4 = corpus_bleu(references, hypotheses)
+
+        self.log_bleu_score(logs, "validation")
 
 
 def build_translation_vocabulary():
@@ -207,6 +206,9 @@ def accuracy(scores, targets, k):
     :param k: k in top-k accuracy
     :return: top-k accuracy
     """
+
+    scores = scores.data
+    targets = targets.data
 
     batch_size = targets.size(0)
     _, ind = scores.topk(k, 1, True, True)

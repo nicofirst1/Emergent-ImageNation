@@ -1,18 +1,19 @@
 import torch.optim
 import torch.utils.data
 from egg import core
-from egg.core import CheckpointSaver, LoggingStrategy, ProgressBarLogger
+from egg.core import CheckpointSaver, LoggingStrategy, ProgressBarLogger, Interaction
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.optim import lr_scheduler
+from torchvision.transforms import transforms
+
+from src.Parameters import (DataParams, DebugParams, PathParams,
+                            ReceiverParams, SenderParams)
 from src.archs.receiver import get_recevier
 # Data parameters
 from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
-from src.Parameters import (DataParams, DebugParams, PathParams,
-                            ReceiverParams, SenderParams)
-from src.utils import (CustomLogging, CustomWandbLogger, SBERT_loss,
+from src.utils import ( CustomWandbLogger, SBERT_loss,
                        get_loggings)
-from torch.nn.utils.rnn import pack_padded_sequence
-from torch.optim import lr_scheduler
-from torchvision.transforms import transforms
 
 
 class EmImTrain(torch.nn.Module):
@@ -22,13 +23,13 @@ class EmImTrain(torch.nn.Module):
     """
 
     def __init__(
-        self,
-        encoder,
-        decoder,
-        sender,
-        device,
-        train_logging_strategy: LoggingStrategy = None,
-        test_logging_strategy: LoggingStrategy = None,
+            self,
+            encoder,
+            decoder,
+            sender,
+            device,
+            train_logging_strategy: LoggingStrategy = None,
+            test_logging_strategy: LoggingStrategy = None,
     ):
         super(EmImTrain, self).__init__()
         self.encoder = encoder
@@ -52,7 +53,7 @@ class EmImTrain(torch.nn.Module):
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         )
 
-    def forward(self, images, text, mask, aux_input, batch_id):
+    def forward(self, images, text, mask, all_captions):
         # get tokens from transformer inside sender
         # [batch size, -1, model dim]
         # remember that [:,:,text_seq_len:] (first text_seq_len on dim 3 ) are relative to text, while others to img
@@ -76,36 +77,36 @@ class EmImTrain(torch.nn.Module):
         targets = caps_sorted[:, 1:]
         _, preds = torch.max(scores, dim=2)
 
-        scores, _, _, _ = pack_padded_sequence(scores, decode_lengths, batch_first=True)
-        targets, _, _, _ = pack_padded_sequence(
+        scores = pack_padded_sequence(scores, decode_lengths, batch_first=True)
+        targets = pack_padded_sequence(
             targets, decode_lengths, batch_first=True
         )
 
         # estimate loss
         loss = self.loss_function(text, preds)
 
-        preds_log = preds[0]
-
-        mask, preds_log, scores, targets = map(
-            lambda c: c.detach().to("cpu"), [ mask, preds_log, scores, targets]
+        mask, preds = map(
+            lambda c: c.detach().to("cpu"), [mask, preds]
         )
 
-        logging_strategy = (
-            self.train_logging_strategy if self.training else self.test_logging_strategy
+        preds = torch.nn.functional.pad(preds, (0, caps_sorted.shape[1] - preds.shape[1], 0, 0))
+
+        scores, targets = map(
+            lambda c: c.to("cpu"), [scores, targets]
         )
-        interaction = logging_strategy.filtered_interaction(
+
+        interaction = Interaction(
             sender_input=img,  # image
             labels=text,
             message_length=mask,
             receiver_input=None,
-            aux_input=None,
+            aux_input={"all_captions": all_captions},
             message=None,
-            receiver_output=preds_log,
+            receiver_output=preds,
             aux=dict(
-                scores=scores,
-                targets=targets,
+                scores=scores.data,
+                targets=targets.data,
             ),
-            batch_id=batch_id,
         )
 
         return loss, interaction
@@ -177,7 +178,7 @@ if __name__ == "__main__":
     #################
 
     checkpoint_logger = CheckpointSaver(
-        checkpoint_path=rt_params.checkpoint, max_checkpoints=3
+        checkpoint_path=pt_params.checkpoint_emim, max_checkpoints=3
     )
 
     progressbar = ProgressBarLogger(
@@ -188,9 +189,9 @@ if __name__ == "__main__":
     )
 
     callbacks = [checkpoint_logger, progressbar]
-    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
+    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.1)
 
-    if  True:
+    if True:
         wandb_logger = CustomWandbLogger(
             train_log_step=train_step,
             val_log_step=val_step,
@@ -212,8 +213,8 @@ if __name__ == "__main__":
         decoder,
         sender,
         deb_params.device,
-        train_logging_strategy=CustomLogging(train_step),
-        test_logging_strategy=CustomLogging(val_step),
+        train_logging_strategy=LoggingStrategy(logging_step=train_step),
+        test_logging_strategy=LoggingStrategy(logging_step=val_step),
     )
 
     trainer = core.Trainer(
