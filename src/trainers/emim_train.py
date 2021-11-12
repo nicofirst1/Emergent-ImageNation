@@ -52,7 +52,7 @@ class EmImTrain(torch.nn.Module):
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
         )
 
-    def forward(self, images, text, mask, something, batch_id):
+    def forward(self, images, text, mask, aux_input, batch_id):
         # get tokens from transformer inside sender
         # [batch size, -1, model dim]
         # remember that [:,:,text_seq_len:] (first text_seq_len on dim 3 ) are relative to text, while others to img

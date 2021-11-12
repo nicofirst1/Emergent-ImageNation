@@ -13,7 +13,7 @@ class CustomLogging(LoggingStrategy):
     def __init__(self, log_step):
         super(CustomLogging, self).__init__()
 
-        self.log_step = log_step
+        self.log_step = log_step if log_step>0 else 2
 
     def filtered_interaction(
             self,
@@ -57,8 +57,8 @@ class CustomWandbLogger(WandbLogger):
 
         super(CustomWandbLogger, self).__init__(dir=dir, config=model_config, **kwargs)
 
-        self.train_log_step = train_log_step
-        self.val_log_step = val_log_step
+        self.train_log_step = train_log_step if train_log_step>0 else 2
+        self.val_log_step = val_log_step if val_log_step>0 else 2
         self.sender = dalle
         self.model_config = model_config
         self.receiver_decoder = None
@@ -138,6 +138,9 @@ class CustomWandbLogger(WandbLogger):
             log_step = self.val_log_step
 
         image_log_step = log_step * 10
+
+        if logs.is_empty():
+            return
 
         if batch_id % log_step != 0:
             return

@@ -106,7 +106,7 @@ class CaptionDataset(Dataset):
             return img, caption, caplen
         else:
             # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
-            all_captions = torch.LongTensor(self.captions[i])
+            all_captions =self.captions[i]
             return img, caption, caplen, all_captions
 
     def __len__(self):
