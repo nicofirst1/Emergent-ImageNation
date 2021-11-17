@@ -4,7 +4,7 @@ from egg.core import CheckpointSaver, LoggingStrategy, ProgressBarLogger
 from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
 from src.Parameters import DebugParams, PathParams, SenderParams
-from src.utils import CustomLogging, CustomWandbLogger, get_loggings
+from src.utils import  CustomWandbLogger, get_loggings
 from torch.optim import AdamW, lr_scheduler
 
 
@@ -108,8 +108,6 @@ if __name__ == "__main__":
 
     sender_train = SenderTrain(
         dalle,
-        train_logging_strategy=CustomLogging(train_step),
-        test_logging_strategy=CustomLogging(val_step),
     )
 
     # training

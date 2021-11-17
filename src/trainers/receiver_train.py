@@ -7,7 +7,7 @@ from src.archs.receiver import get_recevier
 # Data parameters
 from src.dataset import get_dataloaders
 from src.Parameters import DataParams, DebugParams, PathParams, ReceiverParams
-from src.utils import (CustomLogging, CustomWandbLogger,
+from src.utils import ( CustomWandbLogger,
                        build_translation_vocabulary, dictionary_decode,
                        get_loggings)
 from torch import nn
@@ -172,8 +172,6 @@ if __name__ == "__main__":
     receiver_train = ReceiverTrain(
         encoder,
         decoder,
-        train_logging_strategy=CustomLogging(train_step),
-        test_logging_strategy=CustomLogging(val_step),
     )
 
     # training
