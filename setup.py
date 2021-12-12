@@ -9,6 +9,9 @@ setup(
     url='https://gitlab.com/nicofirst1/Emergent-ImageNation',
     include_package_data=True,
     author=["Nicolo' Brandizzi",'Nicole Orzan'],
-    install_reqs=parse_requirements('requirements.txt')
+    install_reqs=parse_requirements('requirements.txt'),
+    install_requires=[
+        'egg @ git+https://github.com/nicofirst1/EGG.git@enanche_loggingStrategy#egg=EGG',
+    ]
 
 )

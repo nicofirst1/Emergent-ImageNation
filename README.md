@@ -2,13 +2,13 @@
 
 To install use the setup file as follows:
 ```
-python setup.py install
+pip install .
 ```
 
 If you wish to play around with the repo and change some code use the `-e` option as follows:
 
 ```
-python setup.py develop
+pip install -e .
 
 ```
 
@@ -54,6 +54,25 @@ For the second one.
 You can find the above-mentioned parameters in the [Parameters](./src/Parameters.py) class.
 
 Once done you can find a new directory called `Preprocessed` containing the required files for training. 
+
+
+## Docker
+You can also run the traing onto docker. 
+
+First build the docker image with:
+```bash
+docker build -t emim .    
+```
+
+Then run the container with 
+```bash
+ docker run \
+ --mount \
+ type=bind,\
+ source=/home/dizzi/Desktop/EmergentImagination/preprocessed,\
+ target=/preprocessed \
+ emim          
+```
 
 ## Receiver Model
 Receiver model taken from [here](https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning/blob/master/models.py)
