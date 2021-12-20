@@ -202,6 +202,7 @@ if __name__ == "__main__":
             model_config={},
             dir=pt_params.wandb_dir,
             opts={},
+            entity="emim",
             log_type="emim",
             mode="disabled" if deb_params.debug else "online",
             tokenizer=tokenizer,
