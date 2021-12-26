@@ -28,6 +28,17 @@ pip install -e .
 
 ```
 
+## Weight and Biases
+This repo uses [Wandb](https://wandb.ai/home) to track the training process.
+To login with your account run the following command (see the [documentation](https://docs.wandb.ai/quickstart))
+```bash
+wandb login
+```
+In order to enable the logger, use the following as an argument for the training
+```bash
+python path/to/file.py --use_wandb True
+```
+
 
 ## Dataset 
 This project uses [COCO2017](https://cocodataset.org/#download). 
