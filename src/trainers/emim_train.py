@@ -193,7 +193,7 @@ if __name__ == "__main__":
     callbacks = [checkpoint_logger, progressbar]
     train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
 
-    if True:
+    if deb_params.use_wandb:
         wandb_logger = CustomWandbLogger(
             train_log_step=train_step,
             val_log_step=val_step,

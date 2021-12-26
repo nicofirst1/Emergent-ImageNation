@@ -88,6 +88,7 @@ class DebugParams(Params):
     workers = 4  # for data-loading; right now, only 1 works with h5py
     batch_size = 16
     pin_memory = True
+    use_wandb=True
 
     def __init__(self):
         super(DebugParams, self).__init__()

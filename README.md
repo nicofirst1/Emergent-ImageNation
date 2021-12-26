@@ -1,6 +1,14 @@
 # EmergentImagination
 
+Install the library with
+```bash
+git clone --recurse-submodules  https://github.com/nicofirst1/Emergent-ImageNation
+
+```
+
 ## Custom Dalle
+
+
 First install Dalle with 
 ```bash
 cd DALLE-pytorch
