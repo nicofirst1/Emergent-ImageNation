@@ -1,5 +1,13 @@
 # EmergentImagination
 
+## Custom Dalle
+First install Dalle with 
+```bash
+cd DALLE-pytorch
+pip install .
+```
+
+## Installation
 To install use the setup file as follows:
 ```
 pip install .
