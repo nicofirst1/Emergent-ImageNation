@@ -12,9 +12,9 @@ from src.archs.receiver import get_recevier
 # Data parameters
 from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
-from src.utils import ( CustomWandbLogger, SBERT_loss,
+from src.utils import (CustomWandbLogger, SBERT_loss,
                        get_loggings)
-
+from torch.profiler import profile, record_function, ProfilerActivity
 
 class EmImTrain(torch.nn.Module):
     """
@@ -64,12 +64,12 @@ class EmImTrain(torch.nn.Module):
         images = self.transform(images)
 
         # call receiver with generated image
-        encoded_img = encoder(images)
+        encoded_img = self.encoder(images)
 
         # concat together sender embedding and encoder ones.
         # remember that sender model dim must be equal to resnet output dim for concat
         receiver_input = torch.cat((encoded_img, sender_tokens), dim=1)
-        scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(
+        scores, caps_sorted, decode_lengths, alphas, sort_ind = self.decoder(
             receiver_input, text, mask
         )
 
@@ -88,15 +88,6 @@ class EmImTrain(torch.nn.Module):
 
         preds = torch.nn.functional.pad(preds, (0, caps_sorted.shape[1] - preds.shape[1], 0, 0))
 
-        mask, preds, img = map(
-            lambda c: c.detach().to("cpu"), [mask, preds, img]
-        )
-
-
-        scores, targets = map(
-            lambda c: c.to("cpu"), [scores, targets]
-        )
-
         interaction = Interaction(
             sender_input=img,  # image
             labels=text,
@@ -111,21 +102,20 @@ class EmImTrain(torch.nn.Module):
             ),
         )
 
+        interaction = interaction.to("cpu")
+
         return loss, interaction
 
-
-if __name__ == "__main__":
-    """
-    Training and validation.
-    """
+def main():
 
     # init parameters
+    deb_params = DebugParams()
+
     core.init(params=[])
     st_params = SenderParams()
     rt_params = ReceiverParams()
     data_params = DataParams()
     pt_params = PathParams()
-    deb_params = DebugParams()
 
     # Custom dataloaders
 
@@ -231,4 +221,10 @@ if __name__ == "__main__":
         optimizer_scheduler=optimizer_scheduler,
     )
 
+
     trainer.train(rt_params.epochs)
+
+
+if __name__ == "__main__":
+
+    main()

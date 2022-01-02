@@ -345,7 +345,10 @@ def get_recevier():
 
     vocab_size_in = data_params.vocab_size_in
     vocab_size_out = vocab_size_in
-    encoder_dim = encoder.resnet[-1][-1].conv3.out_channels
+    encoder_dim = encoder.resnet[-1][-1]._modules
+    encoder_dim = {k: v for k, v in encoder_dim.items() if "conv" in k}
+    encoder_dim = encoder_dim[sorted(encoder_dim)[-1]]
+    encoder_dim = encoder_dim.out_channels
 
     if rec_params.load_checkpoint:
         # use values the decoder was trained with

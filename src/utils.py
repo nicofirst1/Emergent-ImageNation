@@ -121,7 +121,7 @@ class CustomWandbLogger(WandbLogger):
             f"{flag}_epoch": self.epoch,
         }
 
-        if self.log_type is not "sender":
+        if self.log_type != "sender":
             top5 = accuracy(logs.aux["scores"], logs.aux["targets"], 5)
             wandb_log[f"{flag}_top5"] = top5
 
