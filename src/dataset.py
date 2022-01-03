@@ -75,6 +75,7 @@ class CaptionDataset(Dataset):
 
     def to(self, device):
         self.imgs = torch.as_tensor(self.imgs).to(device)
+        return self
 
     def __getitem__(self, i):
 
@@ -122,6 +123,10 @@ def get_dataloaders(transform=None):
         pt_params.preprocessed_dir, "TRAIN", transform=transform
     )
     val_data = CaptionDataset(pt_params.preprocessed_dir, "VAL", transform=transform)
+
+    if db_params.dataset_to_gpu:
+        train_data = train_data.to(db_params.device)
+        val_data = val_data.to(db_params.device)
 
     train_dl = DataLoader(
         train_data,

@@ -90,6 +90,7 @@ class DebugParams(Params):
     pin_memory = True
     use_wandb = False
     use_progress_bar = False
+    dataset_to_gpu=False
 
     def __init__(self):
         super(DebugParams, self).__init__()
