@@ -168,19 +168,22 @@ def main():
     #################
     #   CALLBACKS
     #################
+    callbacks=[]
 
     checkpoint_logger = CheckpointSaver(
         checkpoint_path=pt_params.checkpoint_emim, max_checkpoints=3
     )
+    callbacks.append(checkpoint_logger)
 
-    progressbar = ProgressBarLogger(
-        n_epochs=rt_params.epochs,
-        train_data_len=len(train_dl),
-        test_data_len=len(val_dl),
-        use_info_table=False,
-    )
+    if deb_params.use_progress_bar:
+        progressbar = ProgressBarLogger(
+            n_epochs=rt_params.epochs,
+            train_data_len=len(train_dl),
+            test_data_len=len(val_dl),
+            use_info_table=False,
+        )
+        callbacks.append(progressbar)
 
-    callbacks = [checkpoint_logger, progressbar]
     train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.1)
 
     if deb_params.use_wandb:

@@ -85,10 +85,11 @@ class DebugParams(Params):
 
     debug = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    workers = 4  # for data-loading; right now, only 1 works with h5py
+    workers = 2  # for data-loading; right now, only 1 works with h5py
     batch_size = 16
     pin_memory = True
-    use_wandb=False
+    use_wandb = False
+    use_progress_bar = False
 
     def __init__(self):
         super(DebugParams, self).__init__()
