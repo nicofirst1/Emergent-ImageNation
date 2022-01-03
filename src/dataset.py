@@ -52,8 +52,8 @@ class CaptionDataset(Dataset):
         else:
             img_path = [elem for elem in img_path if "hdf5" in elem][0]
             h = h5py.File(os.path.join(data_folder, img_path), "r")
-            self.imgs= torch.as_tensor(h["images"])
-
+            self.h = h
+            self.imgs= h["images"]
             # Captions per image
             self.cpi = h.attrs["captions_per_image"]
 
@@ -76,6 +76,10 @@ class CaptionDataset(Dataset):
     def to(self, device):
         self.imgs = self.imgs.to(device)
         return self
+
+    def close(self):
+        if hasattr(self, "h"):
+            self.h.close()
 
     def __getitem__(self, i):
 
