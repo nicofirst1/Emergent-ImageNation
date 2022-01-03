@@ -181,7 +181,7 @@ def main():
     )
 
     callbacks = [checkpoint_logger, progressbar]
-    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.01)
+    train_step, val_step = get_loggings(len(train_dl), len(val_dl), perc=0.1)
 
     if deb_params.use_wandb:
         wandb_logger = CustomWandbLogger(
