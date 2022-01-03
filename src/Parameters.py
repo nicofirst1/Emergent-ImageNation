@@ -33,11 +33,19 @@ class Params:
 
         # for every attribute add an arg instance
         for k, v in att.items():
-            parser.add_argument(
-                "--" + k.lower(),
-                type=type(v),
-                default=v,
-            )
+            if isinstance(v, bool):
+                parser.add_argument(
+                    "-" + k.lower(),
+                    action='store_true',
+                    default=v,
+
+                )
+            else:
+                parser.add_argument(
+                    "--" + k.lower(),
+                    type=type(v),
+                    default=v,
+                )
 
         args, unk = parser.parse_known_args()
         for k, v in vars(args).items():
