@@ -97,7 +97,7 @@ class DebugParams(Params):
     batch_size = 16
     pin_memory = True
     use_wandb = False
-    use_progress_bar = False
+    use_progressbar = False
     dataset_to_gpu=False
 
     def __init__(self):
