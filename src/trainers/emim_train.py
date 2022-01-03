@@ -14,7 +14,7 @@ from src.archs.sender import get_sender, get_sender_params
 from src.dataset import get_dataloaders
 from src.utils import (CustomWandbLogger, SBERT_loss,
                        get_loggings)
-from torch.profiler import profile, record_function, ProfilerActivity
+
 
 class EmImTrain(torch.nn.Module):
     """
@@ -58,8 +58,7 @@ class EmImTrain(torch.nn.Module):
         # [batch size, -1, model dim]
         # remember that [:,:,text_seq_len:] (first text_seq_len on dim 3 ) are relative to text, while others to img
 
-        sender_tokens = self.sender(text, mask=mask, image=images, return_tokens=True)
-
+        sender_tokens = self.sender(text, mask=mask, return_tokens=True, image=images)
         # normalize and sub std
         images = self.transform(images)
 
@@ -69,6 +68,7 @@ class EmImTrain(torch.nn.Module):
         # concat together sender embedding and encoder ones.
         # remember that sender model dim must be equal to resnet output dim for concat
         receiver_input = torch.cat((encoded_img, sender_tokens), dim=1)
+
         scores, caps_sorted, decode_lengths, alphas, sort_ind = self.decoder(
             receiver_input, text, mask
         )
@@ -106,8 +106,8 @@ class EmImTrain(torch.nn.Module):
 
         return loss, interaction
 
-def main():
 
+def main():
     # init parameters
     deb_params = DebugParams()
 
@@ -168,7 +168,7 @@ def main():
     #################
     #   CALLBACKS
     #################
-    callbacks=[]
+    callbacks = []
 
     checkpoint_logger = CheckpointSaver(
         checkpoint_path=pt_params.checkpoint_emim, max_checkpoints=3
@@ -224,10 +224,8 @@ def main():
         optimizer_scheduler=optimizer_scheduler,
     )
 
-
     trainer.train(rt_params.epochs)
 
 
 if __name__ == "__main__":
-
     main()

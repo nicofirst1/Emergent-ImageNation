@@ -73,6 +73,9 @@ class CaptionDataset(Dataset):
 
         random.seed(seed)
 
+    def to(self, device):
+        self.imgs = torch.as_tensor(self.imgs).to(device)
+
     def __getitem__(self, i):
 
         img = self.imgs[i]
