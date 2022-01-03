@@ -2,8 +2,11 @@ import torch.optim
 import torch.utils.data
 from egg import core
 from egg.core import CheckpointSaver, LoggingStrategy, ProgressBarLogger, Interaction
+from torch._C._autograd import ProfilerActivity
+from torch.autograd.profiler import record_function
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.optim import lr_scheduler
+from torch.profiler import profile
 from torchvision.transforms import transforms
 
 from src.Parameters import (DataParams, DebugParams, PathParams,
@@ -224,8 +227,18 @@ def main():
         optimizer_scheduler=optimizer_scheduler,
     )
 
+
     trainer.train(rt_params.epochs)
 
-
 if __name__ == "__main__":
-    main()
+    with profile(activities=[
+        ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, ) as prof:
+        with record_function("model_inference"):
+            try:
+                main()
+            except KeyboardInterrupt:
+                prof.stop()
+                pass
+
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+        prof.export_chrome_trace("trace.json")
