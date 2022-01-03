@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, Dataset
 from src.Parameters import DataParams, DebugParams, PathParams
 
 
-class CaptionDataset(Dataset):
+class CaptionDatasetHDF5(Dataset):
     """
     A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
     """
@@ -53,7 +53,7 @@ class CaptionDataset(Dataset):
             img_path = [elem for elem in img_path if "hdf5" in elem][0]
             h = h5py.File(os.path.join(data_folder, img_path), "r")
             self.h = h
-            self.imgs= h["images"]
+            self.imgs = h["images"]
             # Captions per image
             self.cpi = h.attrs["captions_per_image"]
 
@@ -118,7 +118,126 @@ class CaptionDataset(Dataset):
         return self.dataset_size
 
 
+class CaptionDataset(Dataset):
+    """
+    A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
+    """
+
+    def __init__(self, image_paths, caption_paths, split, transform=None, seed=42):
+        """
+        :param data_folder: folder where data files are stored
+        :param split: split, one of 'TRAIN', 'VAL', or 'TEST'
+        :param transform: image transform pipeline
+        """
+        self.split = split
+        assert self.split in {"TRAIN", "VAL", "TEST"}
+
+        self.image_paths= image_paths
+        self.caption_paths= caption_paths
+
+        # PyTorch transformation pipeline for the image (normalizing, etc.)
+        self.transform = transform
+
+        # Total number of datapoints
+        self.dataset_size = len(self.image_paths)
+
+        random.seed(seed)
+
+
+    def __getitem__(self, i):
+
+        img = self.image_paths[i]
+        all_captions = self.caption_paths[i]
+
+
+        try:
+            img = imread(img)
+        except:
+            i = i - 1 if i > 0 else i + 1
+            return self.__getitem__(i)
+
+        img = img_processing(img)
+
+        img = torch.FloatTensor(img / 255.0)
+        if self.transform is not None:
+            img = self.transform(img)
+
+        cap_index = random.randint(0, len(all_captions) - 1)
+        caption = all_captions[cap_index]
+        caplen = torch.as_tensor([len(caption.split())])
+
+        if False:  # set to true if you want to debug the image/caption pair
+            from torchvision.transforms import ToPILImage
+
+            # show the image
+            ToPILImage()(img).show()
+            decoded = SimpleTokenizer().decode(caption)
+            print(decoded)
+
+        return img, caption, caplen, all_captions
+
+    def __len__(self):
+        return self.dataset_size
+
+
+def get_caption_dataset(use_hdf5, transform):
+    pt_params = PathParams()
+
+    if use_hdf5:
+        # get dataloader
+        train_data = CaptionDatasetHDF5(
+            pt_params.preprocessed_dir, "TRAIN", transform=transform
+        )
+        val_data = CaptionDatasetHDF5(pt_params.preprocessed_dir, "VAL", transform=transform)
+    else:
+        karpathy_json_path = os.path.join(pt_params.preprocessed_dir, "coco_raw.json")
+
+        iterable = create_iterable(
+            karpathy_json_path=karpathy_json_path,
+            image_folder=pt_params.coco_path,
+        )
+
+        train, val, _ = iterable
+
+        # get dataloader
+        train_data = CaptionDataset(
+            *train, transform=transform
+        )
+        val_data = CaptionDataset(*val, transform=transform)
+
+    return train_data, val_data
+
+
 def get_dataloaders(transform=None):
+    db_params = DebugParams()
+
+    train_data, val_data=get_caption_dataset(use_hdf5=False, transform=transform)
+
+    if db_params.dataset_to_gpu:
+        train_data = train_data.to(db_params.device)
+        val_data = val_data.to(db_params.device)
+
+    train_dl = DataLoader(
+        train_data,
+        batch_size=db_params.batch_size,
+        shuffle=True,
+        drop_last=True,
+        num_workers=db_params.workers,
+        pin_memory=db_params.pin_memory,
+    )
+    val_dl = DataLoader(
+        val_data,
+        batch_size=db_params.batch_size,
+        shuffle=True,
+        drop_last=True,
+        num_workers=db_params.workers,
+        pin_memory=db_params.pin_memory,
+    )
+
+    return train_dl, val_dl
+
+
+def get_dataloaders_hdf5(transform=None):
     pt_params = PathParams()
     db_params = DebugParams()
 
@@ -166,25 +285,10 @@ def img_processing(img):
     return img
 
 
-def create_input_files(
-        karpathy_json_path,
-        image_folder,
-        captions_per_image,
-        output_folder,
-        data_name,
-        max_len=256,
-        seed_val=8008,
-):
-    """
-    Creates input files for training, validation, and test data.
-    :param karpathy_json_path: path of Karpathy JSON file with splits and captions
-    :param image_folder: folder with downloaded images
-    :param captions_per_image: number of captions to sample per image
-    :param min_word_freq: words occuring less frequently than this threshold are binned as <unk>s
-    :param output_folder: folder to save files
-    :param max_len: don't sample captions longer than this length, also pad shorter sentences
-    """
+def create_iterable(karpathy_json_path,
+                    image_folder,
 
+                    ):
     # Read Karpathy JSON
     with open(karpathy_json_path, "r") as file:
         data = json.load(file)
@@ -198,7 +302,6 @@ def create_input_files(
     val_image_captions = []
     test_image_paths = []
     test_image_captions = []
-    tokenizer = SimpleTokenizer()
 
     for img in track(data, total=len(data), description="Processing tokens..."):
 
@@ -235,12 +338,36 @@ def create_input_files(
     # Create word map
 
     # Sample captions for each image, save images to HDF5 file, and captions and their lengths to JSON files
-    seed(seed_val)
     iterable = [
         (train_image_paths, train_image_captions, "TRAIN"),
         (val_image_paths, val_image_captions, "VAL"),
         (test_image_paths, test_image_captions, "TEST"),
     ]
+
+    return iterable
+
+
+def create_input_files(
+        iterable,
+        captions_per_image,
+        output_folder,
+        data_name,
+        max_len=256,
+        seed_val=8008,
+):
+    """
+    Creates input files for training, validation, and test data.
+    :param karpathy_json_path: path of Karpathy JSON file with splits and captions
+    :param image_folder: folder with downloaded images
+    :param captions_per_image: number of captions to sample per image
+    :param min_word_freq: words occuring less frequently than this threshold are binned as <unk>s
+    :param output_folder: folder to save files
+    :param max_len: don't sample captions longer than this length, also pad shorter sentences
+    """
+
+    seed(seed_val)
+
+    # Create word map
 
     for impaths, imcaps, split in iterable:
 
@@ -385,9 +512,12 @@ if __name__ == "__main__":
     if not os.path.isdir(path_params.preprocessed_dir):
         os.mkdir(path_params.preprocessed_dir)
     if True:
-        create_input_files(
+        iterable = create_iterable(
             karpathy_json_path=karpathy_json_path,
             image_folder=path_params.coco_path,
+        )
+        create_input_files(
+            iterable=iterable,
             captions_per_image=data_params.captions_per_image,
             output_folder=path_params.preprocessed_dir,
             max_len=data_params.max_text_seq_len,
