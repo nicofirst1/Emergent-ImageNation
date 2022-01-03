@@ -175,7 +175,7 @@ def main():
     )
     callbacks.append(checkpoint_logger)
 
-    if deb_params.use_progress_bar:
+    if deb_params.use_progressbar:
         progressbar = ProgressBarLogger(
             n_epochs=rt_params.epochs,
             train_data_len=len(train_dl),
