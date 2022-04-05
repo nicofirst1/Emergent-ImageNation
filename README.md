@@ -1,5 +1,9 @@
 # EmergentImagination
 
+Check out the [Presentation](Presentation.pdf) for a general overview of the framework.
+
+
+## Installation
 Install the library with
 ```bash
 git clone --recurse-submodules  https://github.com/nicofirst1/Emergent-ImageNation
@@ -25,8 +29,13 @@ If you wish to play around with the repo and change some code use the `-e` optio
 
 ```
 pip install -e .
-
 ```
+
+Finally use:
+```
+pip install -r requirements.txt
+```
+To complete the installation process
 
 ## Weight and Biases
 This repo uses [Wandb](https://wandb.ai/home) to track the training process.
