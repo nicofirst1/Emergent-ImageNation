@@ -111,9 +111,10 @@ Then run the container with
 ```
 
 ## Receiver Model
-Receiver model taken from [here](https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning/blob/master/models.py)
+Receiver model taken from [here](https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Image-Captioning#model-checkpoint)
 Wordmap and model checkpoint can be found [here](https://drive.google.com/drive/folders/189VY65I_n4RTpQnmLGj7IzVnOF6dmePC)
 
+Once you downloaded the model create a new folder inside the preprocessed dir and name it `models`, then put the recevier model inside it.
 
 ## Sender model 
 Taken from [here](https://github.com/lucidrains/DALLE-pytorch)

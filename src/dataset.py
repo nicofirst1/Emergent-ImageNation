@@ -3,6 +3,7 @@ import os
 import pickle
 import random
 from random import choice, sample, seed
+from typing import Tuple
 
 import cv2
 import h5py
@@ -152,7 +153,8 @@ class CaptionDataset(Dataset):
 
         try:
             img = imread(img)
-        except:
+        except Exception as e:
+            print(e)
             i = i - 1 if i > 0 else i + 1
             return self.__getitem__(i)
 
@@ -180,7 +182,7 @@ class CaptionDataset(Dataset):
         return self.dataset_size
 
 
-def get_caption_dataset(use_hdf5, transform):
+def get_caption_dataset(use_hdf5, transform) ->Tuple[Dataset,Dataset]:
     pt_params = PathParams()
 
     if use_hdf5:
@@ -210,8 +212,9 @@ def get_caption_dataset(use_hdf5, transform):
 
 def get_dataloaders(transform=None):
     db_params = DebugParams()
+    data_params = DataParams()
 
-    train_data, val_data=get_caption_dataset(use_hdf5=False, transform=transform)
+    train_data, val_data=get_caption_dataset(use_hdf5=data_params.use_hdf5, transform=transform)
 
     if db_params.dataset_to_gpu:
         train_data = train_data.to(db_params.device)

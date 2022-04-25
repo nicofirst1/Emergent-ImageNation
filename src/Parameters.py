@@ -1,7 +1,7 @@
 import argparse
 import inspect
 import os
-
+import sys
 import termcolor
 import torch
 from torch.backends import cudnn
@@ -93,11 +93,11 @@ class DebugParams(Params):
 
     debug = False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    workers = 2  # for data-loading; right now, only 1 works with h5py
+    workers = 0  # for data-loading; right now, only 0 works with h5py
     batch_size = 16
     pin_memory = True
     use_wandb = False
-    use_progressbar = False
+    use_progressbar = True
     dataset_to_gpu=False
 
     def __init__(self):
@@ -133,7 +133,7 @@ class ReceiverParams(Params):
     alpha_c = 1.0  # regularization parameter for 'doubly stochastic attention', as in the paper
     fine_tune_encoder = False  # fine-tune encoder?
 
-    load_checkpoint = True
+    load_checkpoint = False
 
 
 class SenderParams(Params):
@@ -164,7 +164,7 @@ class PathParams(Params):
     working_dir = os.getcwd().split("src")[0]
 
     preprocessed_dir = os.path.join(working_dir, "preprocessed")
-
+    sys.path.insert(0, preprocessed_dir)
     coco_path = "/home/dizzi/Desktop/coco/"
 
     wandb_dir = "./wandb_metadata"
@@ -174,7 +174,7 @@ class PathParams(Params):
     checkpoint_emim = "./checkpoint_emim"  # path to checkpoint, None if none
 
     receiver_decoder_model_path = os.path.join(
-        preprocessed_dir, "receiver_decoder_check.tar"
+        preprocessed_dir, "models/receiver_decoder_check.tar"
     )
     receiver_wordmap_path = os.path.join(
         preprocessed_dir, "WORDMAP_coco_5_cap_per_img_5_min_word_freq.json"
@@ -190,3 +190,4 @@ class DataParams(Params):
 
     # when true use url in the datset and load them during training, less memory but more time
     generate_data_url = False
+    use_hdf5=True
