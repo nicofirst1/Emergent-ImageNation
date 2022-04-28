@@ -60,10 +60,10 @@ class EmImTrain(torch.nn.Module):
 
         sender_tokens = self.sender(text, mask=mask, return_tokens=True, image=images)
         # normalize and sub std
-        images = self.transform(images)
+        images_t = self.transform(images)
 
         # call receiver with generated image
-        encoded_img = self.encoder(images)
+        encoded_img = self.encoder(images_t)
 
         # concat together sender embedding and encoder ones.
         # remember that sender model dim must be equal to resnet output dim for concat
